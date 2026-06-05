@@ -16,7 +16,8 @@
 ```
 CAP/
 ├── main.py                      # CLI 入口
-├── config.yaml                  # 配置文件
+├── config.yaml.example          # 配置文件模板
+├── config.yaml                  # 配置文件（从 example 复制，不入库）
 ├── requirements.txt             # Python 依赖
 ├── templates/                   # 各平台内容模板
 │   ├── xiaohongshu.md
@@ -53,7 +54,13 @@ pip install -r requirements.txt
 playwright install
 ```
 
-### 2. 配置
+### 2. 初始化配置
+
+复制配置模板，然后编辑填入你的 API Key 等信息：
+
+```bash
+cp config.yaml.example config.yaml
+```
 
 编辑 `config.yaml`，填入以下关键配置：
 

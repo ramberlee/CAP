@@ -1,8 +1,10 @@
 # ===== 内容自动生产线配置 =====
+# 复制本文件为 config.yaml，填入你的 API Key 等配置
+# cp config.yaml.example config.yaml
 
 # MiMo API (OpenAI 兼容格式)
 mimo:
-  api_key: "****"  # 替换为你的 MiMo API key
+  api_key: "your-mimo-api-key"           # 替换为你的 MiMo API key
   base_url: "https://token-plan-cn.xiaomimimo.com/v1"
   model: "mimo-v2.5-pro"
 
@@ -22,10 +24,10 @@ generation:
 
 # Qwen-Image 生图配置（阿里云百炼）
 dashscope:
-  api_key: "****"  # 替换为你的百炼 API Key
+  api_key: "your-dashscope-api-key"      # 替换为你的百炼 API Key
   base_url: "https://dashscope.aliyuncs.com/api/v1"
-  model: "qwen-image-2.0-pro"  # 可选: qwen-image / qwen-image-plus / qwen-image-max / qwen-image-2.0-pro
-  size: "1472*1104"  # 图片分辨率
+  model: "qwen-image-2.0-pro"            # 可选: qwen-image / qwen-image-plus / qwen-image-max / qwen-image-2.0-pro
+  size: "1472*1104"                       # 图片分辨率
   # 图片保存目录
   media_dir: "media"
 
@@ -37,9 +39,9 @@ monitor:
 # 发布平台配置
 platforms:
   wechat:
-    app_id: "****"         # 微信公众号 AppID
-    app_secret: "****"     # 微信公众号 AppSecret
-    author: "****"                   # 作者名（不超过16字）
+    app_id: "your-wechat-app-id"         # 微信公众号 AppID
+    app_secret: "your-wechat-app-secret" # 微信公众号 AppSecret
+    author: "作者名"                      # 作者名（不超过16字）
     # 发布模式: draft=存草稿, publish=直接发布
     mode: "draft"
     # 排版主题: claude / apple / wechat / notion
