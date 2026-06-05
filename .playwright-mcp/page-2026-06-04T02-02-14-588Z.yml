@@ -1,0 +1,566 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - text: MiMo-V2-Pro / Omni 将于北京时间 2026.6.1 00:00 自动转发至 V2.5 系列，并按 V2.5 系列的定价计费。最终于 2026.6.30 00:00 正式下线，届时原模型名称将失效，请及时核对并完成 V2.5 系列的切换。
+        - link "查看详情 →" [ref=e8] [cursor=pointer]:
+          - /url: /docs/updates/deprecate
+      - generic [ref=e9]:
+        - text: MiMo-V2-Pro / Omni 将于北京时间 2026.6.1 00:00 自动转发至 V2.5 系列，并按 V2.5 系列的定价计费。最终于 2026.6.30 00:00 正式下线，届时原模型名称将失效，请及时核对并完成 V2.5 系列的切换。
+        - link "查看详情 →" [ref=e10] [cursor=pointer]:
+          - /url: /docs/updates/deprecate
+      - generic [ref=e11]:
+        - text: MiMo-V2-Pro / Omni 将于北京时间 2026.6.1 00:00 自动转发至 V2.5 系列，并按 V2.5 系列的定价计费。最终于 2026.6.30 00:00 正式下线，届时原模型名称将失效，请及时核对并完成 V2.5 系列的切换。
+        - link "查看详情 →" [ref=e12] [cursor=pointer]:
+          - /url: /docs/updates/deprecate
+      - generic [ref=e13]:
+        - text: MiMo-V2-Pro / Omni 将于北京时间 2026.6.1 00:00 自动转发至 V2.5 系列，并按 V2.5 系列的定价计费。最终于 2026.6.30 00:00 正式下线，届时原模型名称将失效，请及时核对并完成 V2.5 系列的切换。
+        - link "查看详情 →" [ref=e14] [cursor=pointer]:
+          - /url: /docs/updates/deprecate
+      - generic [ref=e15]:
+        - text: MiMo-V2-Pro / Omni 将于北京时间 2026.6.1 00:00 自动转发至 V2.5 系列，并按 V2.5 系列的定价计费。最终于 2026.6.30 00:00 正式下线，届时原模型名称将失效，请及时核对并完成 V2.5 系列的切换。
+        - link "查看详情 →" [ref=e16] [cursor=pointer]:
+          - /url: /docs/updates/deprecate
+      - generic [ref=e17]:
+        - text: MiMo-V2-Pro / Omni 将于北京时间 2026.6.1 00:00 自动转发至 V2.5 系列，并按 V2.5 系列的定价计费。最终于 2026.6.30 00:00 正式下线，届时原模型名称将失效，请及时核对并完成 V2.5 系列的切换。
+        - link "查看详情 →" [ref=e18] [cursor=pointer]:
+          - /url: /docs/updates/deprecate
+    - button "关闭" [ref=e20] [cursor=pointer]:
+      - img "close" [ref=e21]:
+        - img [ref=e22]
+  - navigation [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - link "返回首页" [ref=e27] [cursor=pointer]:
+          - /url: /
+          - img [ref=e29]
+        - button "gift 邀请好友得体验金" [ref=e50] [cursor=pointer]:
+          - img "gift" [ref=e51]:
+            - img [ref=e52]
+          - generic [ref=e54]: 邀请好友得体验金
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - link "联系我们" [ref=e58] [cursor=pointer]:
+            - /url: /contact
+          - link "文档" [ref=e60] [cursor=pointer]:
+            - /url: /docs/zh-CN/welcome
+          - link "Token Plan" [ref=e62] [cursor=pointer]:
+            - /url: /token-plan
+            - text: Token Plan
+            - img [ref=e63]
+          - link "控制台" [ref=e66] [cursor=pointer]:
+            - /url: /console/balance
+          - link "博客" [ref=e68] [cursor=pointer]:
+            - /url: https://mimo.xiaomi.com
+        - paragraph [ref=e72] [cursor=pointer]: 中文
+        - link [ref=e74] [cursor=pointer]:
+          - /url: https://huggingface.co/XiaomiMiMo
+          - img [ref=e75]
+  - main [ref=e76]:
+    - generic [ref=e77]:
+      - complementary "Page navigation" [ref=e78]:
+        - generic [ref=e79]:
+          - generic [ref=e80]:
+            - button [ref=e82] [cursor=pointer]:
+              - img [ref=e83]
+            - generic [ref=e86]:
+              - textbox "搜索文档" [ref=e88]
+              - generic [ref=e89]:
+                - generic [ref=e90]: Ctrl
+                - img [ref=e92]
+          - generic [ref=e95]:
+            - link "欢迎使用" [ref=e97] [cursor=pointer]:
+              - /url: /docs/zh-CN/welcome
+              - paragraph [ref=e99]: 欢迎使用
+            - generic [ref=e101]:
+              - generic [ref=e102] [cursor=pointer]:
+                - paragraph [ref=e104]: 快速开始
+                - img [ref=e106]
+              - generic [ref=e110]:
+                - link "首次调用 API" [ref=e113] [cursor=pointer]:
+                  - /url: /docs/zh-CN/quick-start/first-api-call
+                  - paragraph [ref=e115]: 首次调用 API
+                - link "模型与限速" [ref=e118] [cursor=pointer]:
+                  - /url: /docs/zh-CN/quick-start/model
+                  - paragraph [ref=e120]: 模型与限速
+                - link "模型超参" [ref=e123] [cursor=pointer]:
+                  - /url: /docs/zh-CN/quick-start/model-hyperparameters
+                  - paragraph [ref=e125]: 模型超参
+                - link "错误码" [ref=e128] [cursor=pointer]:
+                  - /url: /docs/zh-CN/quick-start/error-codes
+                  - paragraph [ref=e130]: 错误码
+            - generic [ref=e132]:
+              - generic [ref=e133] [cursor=pointer]:
+                - paragraph [ref=e135]: 产品定价
+                - img [ref=e137]
+              - generic [ref=e141]:
+                - link "按量计费 API" [ref=e144] [cursor=pointer]:
+                  - /url: /docs/zh-CN/price/pay-as-you-go
+                  - paragraph [ref=e146]: 按量计费 API
+                - generic [ref=e149]:
+                  - generic [ref=e150] [cursor=pointer]:
+                    - paragraph [ref=e152]: Token Plan
+                    - img [ref=e154]
+                  - generic [ref=e157]:
+                    - link "订阅说明" [ref=e159] [cursor=pointer]:
+                      - /url: /docs/zh-CN/price/tokenplan/subscription
+                      - paragraph [ref=e161]: 订阅说明
+                    - link "快速接入" [ref=e163] [cursor=pointer]:
+                      - /url: /docs/zh-CN/price/tokenplan/quick-access
+                      - paragraph [ref=e165]: 快速接入
+            - generic [ref=e167]:
+              - generic [ref=e168] [cursor=pointer]:
+                - paragraph [ref=e170]: 新闻
+                - img [ref=e172]
+              - generic [ref=e176]:
+                - link "Xiaomi MiMo Orbit 首批 Agent 生态共建合作伙伴公布" [ref=e179] [cursor=pointer]:
+                  - /url: /docs/zh-CN/news/v2.5-orbit
+                  - paragraph [ref=e181]: Xiaomi MiMo Orbit 首批 Agent 生态共建合作伙伴公布
+                - link "MiMo-V2.5 系列调价公告丨 百万亿 Token 创造者激励计划收官" [ref=e184] [cursor=pointer]:
+                  - /url: /docs/zh-CN/news/v2.5-price-update
+                  - paragraph [ref=e186]: MiMo-V2.5 系列调价公告丨 百万亿 Token 创造者激励计划收官
+                - link "小米 MiMo-V2.5 系列开源 & Orbit 百万亿 Token 计划启动" [ref=e189] [cursor=pointer]:
+                  - /url: /docs/zh-CN/news/v2.5-open-sourced
+                  - paragraph [ref=e191]: 小米 MiMo-V2.5 系列开源 & Orbit 百万亿 Token 计划启动
+                - generic [ref=e195] [cursor=pointer]:
+                  - paragraph [ref=e197]: 往期新闻
+                  - img [ref=e199]
+            - generic [ref=e202]:
+              - generic [ref=e203] [cursor=pointer]:
+                - paragraph [ref=e205]: API 文档
+                - img [ref=e207]
+              - generic [ref=e211]:
+                - generic [ref=e214]:
+                  - generic [ref=e215] [cursor=pointer]:
+                    - paragraph [ref=e217]: 对话
+                    - img [ref=e219]
+                  - generic [ref=e222]:
+                    - link "OpenAI API" [ref=e224] [cursor=pointer]:
+                      - /url: /docs/zh-CN/api/chat/openai-api
+                      - paragraph [ref=e226]: OpenAI API
+                    - link "Anthropic API" [ref=e228] [cursor=pointer]:
+                      - /url: /docs/zh-CN/api/chat/anthropic-api
+                      - paragraph [ref=e230]: Anthropic API
+                - generic [ref=e233]:
+                  - generic [ref=e234] [cursor=pointer]:
+                    - paragraph [ref=e236]: 语音
+                    - img [ref=e238]
+                  - link "语音识别（MiMo‑V2.5-ASR）- OpenAI API 兼容" [ref=e243] [cursor=pointer]:
+                    - /url: /docs/zh-CN/api/audio/Speech-Recognition
+                    - paragraph [ref=e245]: 语音识别（MiMo‑V2.5-ASR）- OpenAI API 兼容
+            - generic [ref=e247]:
+              - generic [ref=e248] [cursor=pointer]:
+                - paragraph [ref=e250]: 集成扩展
+                - img [ref=e252]
+              - generic [ref=e256]:
+                - link "AI 工具总览" [ref=e259] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/tools-overview
+                  - paragraph [ref=e261]: AI 工具总览
+                - link "OpenCode 配置" [ref=e264] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/opencode
+                  - paragraph [ref=e266]: OpenCode 配置
+                - link "Claude Code 配置" [ref=e269] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/claudecode
+                  - paragraph [ref=e271]: Claude Code 配置
+                - link "OpenClaw 配置" [ref=e274] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/openclaw
+                  - paragraph [ref=e276]: OpenClaw 配置
+                - link "Hermes Agent 配置" [ref=e279] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/hermes-agent
+                  - paragraph [ref=e281]: Hermes Agent 配置
+                - link "Kilo Code 配置" [ref=e284] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/kilocode
+                  - paragraph [ref=e286]: Kilo Code 配置
+                - link "Cherry Studio 配置" [ref=e289] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/cherrystudio
+                  - paragraph [ref=e291]: Cherry Studio 配置
+                - link "Qwen Code 配置" [ref=e294] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/qwencode
+                  - paragraph [ref=e296]: Qwen Code 配置
+                - link "CodeBuddy 配置" [ref=e299] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/codebuddy
+                  - paragraph [ref=e301]: CodeBuddy 配置
+                - link "Cline 配置" [ref=e304] [cursor=pointer]:
+                  - /url: /docs/zh-CN/integration/cline
+                  - paragraph [ref=e306]: Cline 配置
+            - generic [ref=e308]:
+              - generic [ref=e309] [cursor=pointer]:
+                - paragraph [ref=e311]: 使用指南
+                - img [ref=e313]
+              - generic [ref=e317]:
+                - generic [ref=e320]:
+                  - generic [ref=e321] [cursor=pointer]:
+                    - paragraph [ref=e323]: 工具调用
+                    - img [ref=e325]
+                  - link "联网搜索" [ref=e330] [cursor=pointer]:
+                    - /url: /docs/zh-CN/usage-guide/tool-calling/web-search
+                    - paragraph [ref=e332]: 联网搜索
+                - generic [ref=e335]:
+                  - generic [ref=e336] [cursor=pointer]:
+                    - paragraph [ref=e338]: 多模态理解
+                    - img [ref=e340]
+                  - generic [ref=e343]:
+                    - link "图片理解" [ref=e345] [cursor=pointer]:
+                      - /url: /docs/zh-CN/usage-guide/multimodal-understanding/image-understanding
+                      - paragraph [ref=e347]: 图片理解
+                    - link "音频理解" [ref=e349] [cursor=pointer]:
+                      - /url: /docs/zh-CN/usage-guide/multimodal-understanding/audio-understanding
+                      - paragraph [ref=e351]: 音频理解
+                    - link "视频理解" [ref=e353] [cursor=pointer]:
+                      - /url: /docs/zh-CN/usage-guide/multimodal-understanding/video-understanding
+                      - paragraph [ref=e355]: 视频理解
+                - link "语音识别（MiMo-V2.5-ASR）" [ref=e358] [cursor=pointer]:
+                  - /url: /docs/zh-CN/usage-guide/Speech-Recognition
+                  - paragraph [ref=e360]: 语音识别（MiMo-V2.5-ASR）
+                - link "语音合成（MiMo-V2.5-TTS 系列）" [ref=e363] [cursor=pointer]:
+                  - /url: /docs/zh-CN/usage-guide/speech-synthesis-v2.5
+                  - paragraph [ref=e365]: 语音合成（MiMo-V2.5-TTS 系列）
+                - link "语音合成（MiMo-V2-TTS）" [ref=e368] [cursor=pointer]:
+                  - /url: /docs/zh-CN/usage-guide/speech-synthesis
+                  - paragraph [ref=e370]: 语音合成（MiMo-V2-TTS）
+                - link "【重要公告】关于 Agent 类产品多轮会话中回传 reasoning_content 的说明" [ref=e373] [cursor=pointer]:
+                  - /url: /docs/zh-CN/usage-guide/passing-back-reasoning_content
+                  - paragraph [ref=e375]: 【重要公告】关于 Agent 类产品多轮会话中回传 reasoning_content 的说明
+            - generic [ref=e377]:
+              - generic [ref=e378] [cursor=pointer]:
+                - paragraph [ref=e380]: 精彩活动
+                - img [ref=e382]
+              - link "邀请有礼" [ref=e389] [cursor=pointer]:
+                - /url: /docs/zh-CN/promotions/refer
+                - paragraph [ref=e391]: 邀请有礼
+            - link "常见问题" [ref=e393] [cursor=pointer]:
+              - /url: /docs/zh-CN/faq
+              - paragraph [ref=e395]: 常见问题
+            - generic [ref=e397]:
+              - generic [ref=e398] [cursor=pointer]:
+                - paragraph [ref=e400]: 更新日志
+                - img [ref=e402]
+              - generic [ref=e406]:
+                - link "模型发布" [ref=e409] [cursor=pointer]:
+                  - /url: /docs/zh-CN/updates/model
+                  - paragraph [ref=e411]: 模型发布
+                - link "模型下线" [ref=e414] [cursor=pointer]:
+                  - /url: /docs/zh-CN/updates/deprecate
+                  - paragraph [ref=e416]: 模型下线
+                - link "功能更新" [ref=e419] [cursor=pointer]:
+                  - /url: /docs/zh-CN/updates/feature
+                  - paragraph [ref=e421]: 功能更新
+            - generic [ref=e423]:
+              - generic [ref=e424] [cursor=pointer]:
+                - paragraph [ref=e426]: 条款与协议
+                - img [ref=e428]
+              - generic [ref=e432]:
+                - link "服务协议" [ref=e435] [cursor=pointer]:
+                  - /url: /docs/terms/user-agreement
+                  - paragraph [ref=e437]: 服务协议
+                - link "隐私政策" [ref=e440] [cursor=pointer]:
+                  - /url: /docs/terms/privacy-policy
+                  - paragraph [ref=e442]: 隐私政策
+          - generic [ref=e444]:
+            - generic [ref=e445] [cursor=pointer]:
+              - paragraph [ref=e447]: 开发者交流群
+              - img [ref=e449]
+            - link "免费体验 MiMo Claw HOT" [ref=e451] [cursor=pointer]:
+              - /url: https://aistudio.xiaomimimo.com/
+              - generic [ref=e452]:
+                - paragraph [ref=e453]: 免费体验 MiMo Claw
+                - generic [ref=e455]: HOT
+      - button:
+        - img
+      - generic [ref=e456]:
+        - navigation "breadcrumb" [ref=e459]:
+          - list [ref=e460]:
+            - listitem [ref=e461]:
+              - link "文档" [ref=e462] [cursor=pointer]:
+                - /url: /docs/zh-CN
+            - listitem [ref=e463]:
+              - img [ref=e464]
+            - listitem [ref=e466]:
+              - link "快速开始" [disabled] [ref=e467]
+            - listitem [ref=e468]:
+              - img [ref=e469]
+            - listitem [ref=e471]:
+              - link "首次调用 API" [disabled] [ref=e472]
+        - generic [ref=e473]:
+          - generic [ref=e474]:
+            - heading "首次调用 API" [level=1] [ref=e475]
+            - heading "支持的接口类型" [level=2] [ref=e476]
+            - paragraph [ref=e477]: Xiaomi MiMo API 开放平台兼容 OpenAI API 、Anthropic API 两种主流 API 格式，您可以使用现有 SDK 来使用模型推理服务。
+            - heading "调用前准备" [level=2] [ref=e478]
+            - heading "登录 Xiaomi MiMo API 开放平台" [level=3] [ref=e479]
+            - paragraph [ref=e480]:
+              - text: 目前平台仅提供个人账号登录方式，需使用小米账号登录，如已注册过小米账号，可直接登录；若无小米账号，可访问
+              - link "控制台" [ref=e481] [cursor=pointer]:
+                - /url: https://platform.xiaomimimo.com/#/console/usage
+              - text: 进行注册，或在
+              - link "id.mi.com" [ref=e482] [cursor=pointer]:
+                - /url: https://id.mi.com/
+              - text: 提前注册。
+            - heading "获取 API Key" [level=3] [ref=e483]
+            - paragraph [ref=e484]:
+              - text: 在
+              - link "控制台-API Keys" [ref=e485] [cursor=pointer]:
+                - /url: https://platform.xiaomimimo.com/#/console/api-keys
+              - text: 创建 API Key。请妥善保管您的 API Key，避免泄露造成额度被盗用，建议将 API Key 配置到环境变量。
+            - heading "快速接入示例" [level=2] [ref=e486]
+            - paragraph [ref=e487]: 可复制以下 API 示例代码，并替换 API Key 的值，即可快速调用。
+            - paragraph [ref=e488]: 强烈建议使用以下系统提示词，请从英文和中文版本中选择。
+            - blockquote [ref=e489]:
+              - paragraph [ref=e490]: 中文
+              - generic [ref=e491]:
+                - code [ref=e493]:
+                  - text: 你是MiMo（中文名称也是MiMo），是小米公司研发的AI智能助手。
+                  - generic [ref=e494]: "今天的日期：{date} {week}，你的知识截止日期是2024年12月。"
+                - button "Copy code" [ref=e496] [cursor=pointer]:
+                  - img [ref=e497]
+            - blockquote [ref=e500]:
+              - paragraph [ref=e501]: 英文
+              - generic [ref=e502]:
+                - code [ref=e504]:
+                  - generic [ref=e505]: You are MiMo, an AI assistant developed by Xiaomi.
+                  - generic [ref=e506]: "Today's date: {date} {week}. Your knowledge cutoff date is December 2024."
+                - button "Copy code" [ref=e508] [cursor=pointer]:
+                  - img [ref=e509]
+            - heading "Python SDK 示例" [level=3] [ref=e512]
+            - heading "OpenAI API 格式示例" [level=4] [ref=e513]
+            - paragraph [ref=e514]: 通过运行以下命令安装 OpenAI Python SDK：
+            - generic [ref=e515]:
+              - code [ref=e517]:
+                - generic [ref=e518]: "# 如果运行失败，您可以将pip替换成pip3再运行"
+                - generic [ref=e519]: pip install -U openai
+              - button "Copy code" [ref=e521] [cursor=pointer]:
+                - img [ref=e522]
+            - paragraph [ref=e525]: 调用 API：
+            - generic [ref=e526]:
+              - code [ref=e528]:
+                - generic [ref=e529]: import os
+                - generic [ref=e530]: from openai import OpenAI
+                - generic [ref=e531]: client = OpenAI(
+                - generic [ref=e532]: api_key=os.environ.get("MIMO_API_KEY"),
+                - generic [ref=e533]: base_url="https://api.xiaomimimo.com/v1"
+                - generic [ref=e534]: )
+                - generic [ref=e535]: completion = client.chat.completions.create(
+                - generic [ref=e536]: model="mimo-v2.5-pro",
+                - generic [ref=e537]: messages=[
+                - generic [ref=e538]: "{"
+                - generic [ref=e539]: "\"role\": \"system\","
+                - generic [ref=e540]: "\"content\": \"You are MiMo, an AI assistant developed by Xiaomi. Today is date: Tuesday, December 16, 2025. Your knowledge cutoff date is December 2024.\""
+                - generic [ref=e541]: "},"
+                - generic [ref=e542]: "{"
+                - generic [ref=e543]: "\"role\": \"user\","
+                - generic [ref=e544]: "\"content\": \"please introduce yourself\""
+                - generic [ref=e545]: "}"
+                - generic [ref=e546]: "],"
+                - generic [ref=e547]: max_completion_tokens=1024,
+                - generic [ref=e548]: temperature=1.0,
+                - generic [ref=e549]: top_p=0.95,
+                - generic [ref=e550]: stream=False,
+                - generic [ref=e551]: stop=None,
+                - generic [ref=e552]: frequency_penalty=0,
+                - generic [ref=e553]: presence_penalty=0
+                - generic [ref=e554]: )
+                - generic [ref=e555]: print(completion.model_dump_json())
+              - button "Copy code" [ref=e557] [cursor=pointer]:
+                - img [ref=e558]
+            - heading "Anthropic API 格式示例" [level=4] [ref=e561]
+            - paragraph [ref=e562]: 通过运行以下命令安装 Anthropic Python SDK：
+            - generic [ref=e563]:
+              - code [ref=e565]:
+                - generic [ref=e566]: "# 如果运行失败，您可以将pip替换成pip3再运行"
+                - generic [ref=e567]: pip install -U anthropic
+              - button "Copy code" [ref=e569] [cursor=pointer]:
+                - img [ref=e570]
+            - paragraph [ref=e573]: 调用 API：
+            - generic [ref=e574]:
+              - code [ref=e576]:
+                - generic [ref=e577]: import os
+                - generic [ref=e578]: from anthropic import Anthropic
+                - generic [ref=e579]: client = Anthropic(
+                - generic [ref=e580]: api_key=os.environ.get("MIMO_API_KEY"),
+                - generic [ref=e581]: base_url="https://api.xiaomimimo.com/anthropic"
+                - generic [ref=e582]: )
+                - generic [ref=e583]: message = client.messages.create(
+                - generic [ref=e584]: model="mimo-v2.5-pro",
+                - generic [ref=e585]: max_tokens=1024,
+                - generic [ref=e586]: "system=\"You are MiMo, an AI assistant developed by Xiaomi. Today is date: Tuesday, December 16, 2025. Your knowledge cutoff date is December 2024.\","
+                - generic [ref=e587]: messages=[
+                - generic [ref=e588]: "{"
+                - generic [ref=e589]: "\"role\": \"user\","
+                - generic [ref=e590]: "\"content\": ["
+                - generic [ref=e591]: "{"
+                - generic [ref=e592]: "\"type\": \"text\","
+                - generic [ref=e593]: "\"text\": \"please introduce yourself\""
+                - generic [ref=e594]: "}"
+                - generic [ref=e595]: "]"
+                - generic [ref=e596]: "}"
+                - generic [ref=e597]: "],"
+                - generic [ref=e598]: top_p=0.95,
+                - generic [ref=e599]: stream=False,
+                - generic [ref=e600]: temperature=1.0,
+                - generic [ref=e601]: stop_sequences=None
+                - generic [ref=e602]: )
+                - generic [ref=e603]: print(message.content)
+              - button "Copy code" [ref=e605] [cursor=pointer]:
+                - img [ref=e606]
+            - heading "Curl 示例" [level=3] [ref=e609]
+            - heading "OpenAI API 格式示例" [level=4] [ref=e610]
+            - generic [ref=e611]:
+              - code [ref=e613]:
+                - generic [ref=e614]: curl --location --request POST 'https://api.xiaomimimo.com/v1/chat/completions' \
+                - generic [ref=e615]:
+                  - text: "--header"
+                  - generic [ref=e616]: "\"api-key: $MIMO_API_KEY\""
+                  - text: \
+                - generic [ref=e617]: "--header \"Content-Type: application/json\" \\"
+                - generic [ref=e618]: "--data-raw '{"
+                - generic [ref=e619]: "\"model\": \"mimo-v2.5-pro\","
+                - generic [ref=e620]: "\"messages\": ["
+                - generic [ref=e621]: "{"
+                - generic [ref=e622]: "\"role\": \"system\","
+                - generic [ref=e623]: "\"content\": \"You are MiMo, an AI assistant developed by Xiaomi. Today is date: Tuesday, December 16, 2025. Your knowledge cutoff date is December 2024.\""
+                - generic [ref=e624]: "},"
+                - generic [ref=e625]: "{"
+                - generic [ref=e626]: "\"role\": \"user\","
+                - generic [ref=e627]: "\"content\": \"please introduce yourself\""
+                - generic [ref=e628]: "}"
+                - generic [ref=e629]: "],"
+                - generic [ref=e630]: "\"max_completion_tokens\": 1024,"
+                - generic [ref=e631]: "\"temperature\": 1.0,"
+                - generic [ref=e632]: "\"top_p\": 0.95,"
+                - generic [ref=e633]: "\"stream\": false,"
+                - generic [ref=e634]: "\"stop\": null,"
+                - generic [ref=e635]: "\"frequency_penalty\": 0,"
+                - generic [ref=e636]: "\"presence_penalty\": 0"
+                - generic [ref=e637]: "}'"
+              - button "Copy code" [ref=e639] [cursor=pointer]:
+                - img [ref=e640]
+            - heading "Anthropic API 格式示例" [level=4] [ref=e643]
+            - generic [ref=e644]:
+              - code [ref=e646]:
+                - generic [ref=e647]: curl --location --request POST 'https://api.xiaomimimo.com/anthropic/v1/messages' \
+                - generic [ref=e648]:
+                  - text: "--header"
+                  - generic [ref=e649]: "\"api-key: $MIMO_API_KEY\""
+                  - text: \
+                - generic [ref=e650]: "--header \"Content-Type: application/json\" \\"
+                - generic [ref=e651]: "--data-raw '{"
+                - generic [ref=e652]: "\"model\": \"mimo-v2.5-pro\","
+                - generic [ref=e653]: "\"max_tokens\": 1024,"
+                - generic [ref=e654]: "\"system\": \"You are MiMo, an AI assistant developed by Xiaomi. Today is date: Tuesday, December 16, 2025. Your knowledge cutoff date is December 2024.\","
+                - generic [ref=e655]: "\"messages\": ["
+                - generic [ref=e656]: "{"
+                - generic [ref=e657]: "\"role\": \"user\","
+                - generic [ref=e658]: "\"content\": ["
+                - generic [ref=e659]: "{"
+                - generic [ref=e660]: "\"type\": \"text\","
+                - generic [ref=e661]: "\"text\": \"please introduce yourself\""
+                - generic [ref=e662]: "}"
+                - generic [ref=e663]: "]"
+                - generic [ref=e664]: "}"
+                - generic [ref=e665]: "],"
+                - generic [ref=e666]: "\"top_p\": 0.95,"
+                - generic [ref=e667]: "\"stream\": false,"
+                - generic [ref=e668]: "\"temperature\": 1.0,"
+                - generic [ref=e669]: "\"stop_sequences\": null"
+                - generic [ref=e670]: "}'"
+              - button "Copy code" [ref=e672] [cursor=pointer]:
+                - img [ref=e673]
+            - heading "在思考模式下进行多轮工具调用" [level=3] [ref=e676]
+            - paragraph [ref=e677]:
+              - text: 在思考模式下的多轮工具调用过程中，模型会在返回
+              - code [ref=e678]: tool_calls
+              - text: 字段的同时返回
+              - code [ref=e679]: reasoning_content
+              - text: 字段。若要继续对话，建议在后续每次请求的
+              - code [ref=e680]: messages
+              - text: 数组中保留所有历史
+              - code [ref=e681]: reasoning_content
+              - text: ，以获得最佳表现。
+            - paragraph [ref=e682]: 请求示例如下：
+            - generic [ref=e683]:
+              - code [ref=e685]:
+                - generic [ref=e686]: curl --location --request POST 'https://api.xiaomimimo.com/v1/chat/completions' \
+                - generic [ref=e687]:
+                  - text: "--header"
+                  - generic [ref=e688]: "\"api-key: $MIMO_API_KEY\""
+                  - text: \
+                - generic [ref=e689]: "--header \"Content-Type: application/json\" \\"
+                - generic [ref=e690]: "--data-raw '{"
+                - generic [ref=e691]: "\"messages\": ["
+                - generic [ref=e692]: "{"
+                - generic [ref=e693]: "\"role\": \"assistant\","
+                - generic [ref=e694]: "\"content\": \"Hello! I am MiMo.\","
+                - generic [ref=e695]: "\"reasoning_content\": \"Okay, the user just asked me to introduce myself. That is a pretty straightforward request, but I should think about why they are asking this.\""
+                - generic [ref=e696]: "},"
+                - generic [ref=e697]: "{"
+                - generic [ref=e698]: "\"role\": \"user\","
+                - generic [ref=e699]: "\"content\": \"What is the weather like in Hebei?\""
+                - generic [ref=e700]: "}"
+                - generic [ref=e701]: "],"
+                - generic [ref=e702]: "\"model\": \"mimo-v2.5-pro\","
+                - generic [ref=e703]: "\"max_completion_tokens\": 1024,"
+                - generic [ref=e704]: "\"temperature\": 1.0,"
+                - generic [ref=e705]: "\"stream\": false,"
+                - generic [ref=e706]: "\"tools\": ["
+                - generic [ref=e707]: "{"
+                - generic [ref=e708]: "\"type\": \"function\","
+                - generic [ref=e709]: "\"function\": {"
+                - generic [ref=e710]: "\"name\": \"get_current_weather\","
+                - generic [ref=e711]: "\"description\": \"Get the current weather in a given location\","
+                - generic [ref=e712]: "\"parameters\": {"
+                - generic [ref=e713]: "\"type\": \"object\","
+                - generic [ref=e714]: "\"properties\": {"
+                - generic [ref=e715]: "\"location\": {"
+                - generic [ref=e716]: "\"type\": \"string\","
+                - generic [ref=e717]: "\"description\": \"The city and state, e.g. San Francisco, CA\""
+                - generic [ref=e718]: "},"
+                - generic [ref=e719]: "\"unit\": {"
+                - generic [ref=e720]: "\"type\": \"string\","
+                - generic [ref=e721]: "\"enum\": ["
+                - generic [ref=e722]: "\"celsius\","
+                - generic [ref=e723]: "\"fahrenheit\""
+                - generic [ref=e724]: "]"
+                - generic [ref=e725]: "}"
+                - generic [ref=e726]: "},"
+                - generic [ref=e727]: "\"required\": ["
+                - generic [ref=e728]: "\"location\""
+                - generic [ref=e729]: "]"
+                - generic [ref=e730]: "}"
+                - generic [ref=e731]: "}"
+                - generic [ref=e732]: "}"
+                - generic [ref=e733]: "],"
+                - generic [ref=e734]: "\"tool_choice\": \"auto\""
+                - generic [ref=e735]: "}'"
+              - button "Copy code" [ref=e737] [cursor=pointer]:
+                - img [ref=e738]
+            - heading "查看用量信息" [level=2] [ref=e741]
+            - paragraph [ref=e742]:
+              - text: 在
+              - link "用量信息" [ref=e743] [cursor=pointer]:
+                - /url: https://platform.xiaomimimo.com/#/console/usage
+              - text: 页面 ，您可以按照日期查看、导出账号的模型 Tokens 用量及请求次数详细数据。
+          - generic [ref=e744]: 更新时间 2026 年 04 月 22 日
+        - generic [ref=e746]:
+          - link "欢迎使用" [ref=e747] [cursor=pointer]:
+            - /url: /docs/zh-CN/welcome
+            - img [ref=e748]
+            - generic [ref=e750]: 欢迎使用
+          - link "模型与限速" [ref=e751] [cursor=pointer]:
+            - /url: /docs/zh-CN/quick-start/model
+            - generic [ref=e752]: 模型与限速
+            - img [ref=e753]
+    - generic [ref=e756]:
+      - paragraph [ref=e757]:
+        - link "Xiaomi MiMo 开放平台服务协议" [ref=e758] [cursor=pointer]:
+          - /url: /docs/terms/user-agreement
+        - generic [ref=e759]: "|"
+        - link "Xiaomi MiMo 开放平台隐私政策" [ref=e760] [cursor=pointer]:
+          - /url: /docs/terms/privacy-policy
+      - paragraph [ref=e761]:
+        - generic [ref=e762]: Copyright©2025 Xiaomi. All Rights Reserved
+        - 'link "Xiaomi MiMo : 备案号 Beijing-XiaomiMiMo-202601050182" [ref=e763] [cursor=pointer]':
+          - /url: https://mp.weixin.qq.com/s/67LmJeFdhi58UpPk9Wbssg
+        - 'link "小米大语言模型算法 : 备案号 网信算备110108916280901240011号" [ref=e764] [cursor=pointer]':
+          - /url: https://aistudio-cdn.xiaomimimo.com/xiaomimimo-static/document/%E5%85%AC%E7%A4%BA%E5%86%85%E5%AE%B9_%E7%BD%91%E4%BF%A1%E7%AE%97%E5%A4%87110108916280901240011%E5%8F%B7.pdf
+        - link "京ICP备17028681号-55" [ref=e765] [cursor=pointer]:
+          - /url: https://beian.miit.gov.cn/
