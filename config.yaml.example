@@ -14,11 +14,6 @@ generation:
   temperature: 0.7
   # 生成语言
   language: "zh-CN"
-  # 每个热点生成的平台列表
-  platforms:
-    - xiaohongshu
-    - wechat
-    - douyin
   # 自动生成配图
   auto_image: true
 
@@ -39,6 +34,7 @@ monitor:
 # 发布平台配置
 platforms:
   wechat:
+    enabled: true                    # 是否启用该平台（内容生成 + 发布）
     app_id: "your-wechat-app-id"         # 微信公众号 AppID
     app_secret: "your-wechat-app-secret" # 微信公众号 AppSecret
     author: "作者名"                      # 作者名（不超过16字）
@@ -48,6 +44,7 @@ platforms:
     theme: "claude"
 
   xiaohongshu:
+    enabled: true                    # 是否启用该平台（内容生成 + 发布）
     # Playwright cookie 存储路径
     cookie_file: "db/xhs_cookies.json"
     # 是否无头模式（调试时设为 false）
@@ -56,6 +53,7 @@ platforms:
     channel: "msedge"
 
   douyin:
+    enabled: true                    # 是否启用该平台（内容生成 + 发布）
     # Playwright cookie 存储路径
     cookie_file: "db/douyin_cookies.json"
     # 是否无头模式

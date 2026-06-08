@@ -11,6 +11,12 @@ from modules.platforms.douyin import DouyinPublisher
 logger = logging.getLogger(__name__)
 console = Console()
 
+_PUBLISHER_CLASSES = {
+    "wechat": WeChatPublisher,
+    "xiaohongshu": XiaohongshuPublisher,
+    "douyin": DouyinPublisher,
+}
+
 
 class PublishDispatcher:
     def __init__(self, config: dict):
@@ -19,11 +25,11 @@ class PublishDispatcher:
             output_dir=config.get("output_dir", "output"),
             media_dir=config.get("dashscope", {}).get("media_dir", "media"),
         )
-        self._publishers = {
-            "wechat": WeChatPublisher(config.get("platforms", {}).get("wechat", {})),
-            "xiaohongshu": XiaohongshuPublisher(config.get("platforms", {}).get("xiaohongshu", {})),
-            "douyin": DouyinPublisher(config.get("platforms", {}).get("douyin", {})),
-        }
+        platforms_config = config.get("platforms", {})
+        self._publishers = {}
+        for name, cls in _PUBLISHER_CLASSES.items():
+            if platforms_config.get(name, {}).get("enabled", False):
+                self._publishers[name] = cls(platforms_config.get(name, {}))
 
     def publish_content(self, content: dict, dry_run: bool = False) -> dict:
         """Publish a single content item."""

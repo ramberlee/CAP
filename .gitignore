@@ -226,3 +226,6 @@ media/*
 output/*
 #local config
 config.yaml
+
+# Claude
+.claude/*

@@ -117,8 +117,11 @@ class WeChatPublisher:
                     if line and not line.startswith("#") and not line.startswith("!") and not line.startswith("-"):
                         digest = re.sub(r"\*\*(.*?)\*\*", r"\1", line)  # strip bold markers
                         break
-            if len(digest) > 128:
-                digest = digest[:128]
+            # WeChat limits digest to 128 bytes (not chars); CJK chars = 3 bytes each
+            while len(digest.encode("utf-8")) > 120:
+                digest = digest[:-1]
+            if digest:
+                digest = digest.rstrip() + "…"
 
             url = f"{self.BASE_URL}/draft/add?access_token={token}"
             article = {
@@ -131,6 +134,8 @@ class WeChatPublisher:
             }
             if thumb_media_id:
                 article["thumb_media_id"] = thumb_media_id
+            else:
+                return {"success": False, "error": "No images found — WeChat draft requires a cover image. Add at least one [IMAGE:] placeholder."}
 
             import json
             payload = json.dumps({"articles": [article]}, ensure_ascii=False).encode("utf-8")

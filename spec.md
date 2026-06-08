@@ -42,7 +42,7 @@ CAP - Content Auto Pipeline（内容自动生产线）
 
 #### FR-2.2.1 多平台内容生成
 - **描述**: 基于热点话题，调用 MiMo API 为各平台生成适配内容
-- **支持平台**: 小红书、微信公众号、抖音
+- **支持平台**: 小红书、微信公众号、抖音（通过 `config.platforms.{name}.enabled` 控制是否启用）
 - **API**: MiMo API（OpenAI 兼容格式）
 - **模型**: mimo-v2.5-pro（可配置）
 - **模板**: 每个平台独立的 prompt 模板（`templates/` 目录）
@@ -264,7 +264,6 @@ mimo:               # MiMo API 配置
 generation:         # 内容生成参数
   max_tokens:       # 最大 token 数
   temperature:      # 温度参数
-  platforms:        # 生成的平台列表
   auto_image:       # 是否自动生成配图
 
 dashscope:          # 阿里云百炼配置
@@ -278,16 +277,19 @@ monitor:            # 热点采集配置
 
 platforms:          # 发布平台配置
   wechat:           # 微信公众号
+    enabled:        # 是否启用（内容生成 + 发布）
     app_id:
     app_secret:
     author:
     mode:           # draft/publish
     theme:          # 排版主题
   xiaohongshu:      # 小红书
+    enabled:        # 是否启用（内容生成 + 发布）
     cookie_file:
     headless:
     channel:
   douyin:           # 抖音
+    enabled:        # 是否启用（内容生成 + 发布）
     cookie_file:
     headless:
     channel:

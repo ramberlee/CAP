@@ -17,6 +17,16 @@ PLATFORMS = ["xiaohongshu", "wechat", "douyin"]
 IMAGE_PLACEHOLDER_RE = re.compile(r"\[IMAGE:(.*?)]")
 
 
+def get_enabled_platforms(config: dict) -> list[str]:
+    """Return the list of platforms that have enabled: true in config.platforms."""
+    platforms_config = config.get("platforms", {})
+    enabled = []
+    for name in PLATFORMS:
+        if platforms_config.get(name, {}).get("enabled", False):
+            enabled.append(name)
+    return enabled
+
+
 class ContentGenerator:
     def __init__(self, db: Database, config: dict):
         self.db = db
@@ -133,7 +143,7 @@ class ContentGenerator:
 
     def generate_for_topic(self, topic_id: int, topic_title: str, platforms: list[str] | None = None) -> list[Path]:
         """Generate content for a topic across specified platforms. Returns file paths."""
-        platforms = platforms or self.config.get("generation", {}).get("platforms", PLATFORMS)
+        platforms = platforms or get_enabled_platforms(self.config)
         file_paths = []
 
         for platform in platforms:

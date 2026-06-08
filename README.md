@@ -76,14 +76,25 @@ dashscope:
   api_key: "your-dashscope-api-key"
   model: "qwen-image-2.0-pro"
 
-# 微信公众号
+# 发布平台配置（enabled 控制是否启用该平台的内容生成和发布）
 platforms:
   wechat:
+    enabled: true
     app_id: "your-app-id"
     app_secret: "your-app-secret"
     author: "作者名"
     mode: "draft"
     theme: "claude"
+  xiaohongshu:
+    enabled: true
+    cookie_file: "db/xhs_cookies.json"
+    headless: false
+    channel: "msedge"
+  douyin:
+    enabled: true
+    cookie_file: "db/douyin_cookies.json"
+    headless: false
+    channel: "msedge"
 ```
 
 ### 3. 使用
