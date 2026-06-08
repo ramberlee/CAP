@@ -16,6 +16,23 @@ logger = logging.getLogger(__name__)
 PLATFORMS = ["xiaohongshu", "wechat", "douyin"]
 IMAGE_PLACEHOLDER_RE = re.compile(r"\[IMAGE:(.*?)]")
 
+CATEGORY_SYSTEM_PROMPTS = {
+    "dao": (
+        "你是MiMo，是小米公司研发的AI智能助手。"
+        "你正在为一个AI领域的内容账号创作「道」系列内容，账号定位是：「AI时代必备心法。在这里，看懂AI的道与术。」"
+        "「道」系列关注社会趋势、人性洞察、时代变迁，用AI思维提供独特的观察视角。"
+        "内容要求：从宏观视角解读社会热点，提供认知升级的洞察，而非就事论事。"
+        "请严格按照要求的JSON格式输出。"
+    ),
+    "shu": (
+        "你是MiMo，是小米公司研发的AI智能助手。"
+        "你正在为一个AI领域的内容账号创作「术」系列内容，账号定位是：「AI时代必备心法。在这里，看懂AI的道与术。」"
+        "「术」系列关注AI技术本身，解读技术原理、应用场景、实操方法。"
+        "内容要求：有具体的技术细节、工具名称、使用方法，提供实操价值，而非泛泛而谈。"
+        "请严格按照要求的JSON格式输出。"
+    ),
+}
+
 
 def get_enabled_platforms(config: dict) -> list[str]:
     """Return the list of platforms that have enabled: true in config.platforms."""
@@ -45,20 +62,28 @@ class ContentGenerator:
         )
         self._templates = {}
 
-    def _load_template(self, platform: str) -> str:
-        if platform not in self._templates:
-            template_path = Path(f"templates/{platform}.md")
-            if not template_path.exists():
-                raise FileNotFoundError(f"Template not found: {template_path}")
-            self._templates[platform] = template_path.read_text(encoding="utf-8")
-        return self._templates[platform]
+    def _load_template(self, platform: str, category: str = "dao") -> str:
+        cache_key = f"{platform}_{category}"
+        if cache_key not in self._templates:
+            # Try category-specific template first, fall back to generic
+            category_path = Path(f"templates/{platform}_{category}.md")
+            generic_path = Path(f"templates/{platform}.md")
 
-    def _generate_for_platform(self, topic: str, platform: str) -> Optional[dict]:
+            if category_path.exists():
+                self._templates[cache_key] = category_path.read_text(encoding="utf-8")
+            elif generic_path.exists():
+                self._templates[cache_key] = generic_path.read_text(encoding="utf-8")
+            else:
+                raise FileNotFoundError(f"Template not found: {category_path} or {generic_path}")
+        return self._templates[cache_key]
+
+    def _generate_for_platform(self, topic: str, platform: str, category: str = "dao") -> Optional[dict]:
         """Generate content for a specific platform."""
-        template = self._load_template(platform)
+        template = self._load_template(platform, category)
         prompt = template.replace("{topic}", topic)
 
-        logger.info(f"Generating {platform} content for: {topic[:50]}...")
+        system_prompt = CATEGORY_SYSTEM_PROMPTS.get(category, CATEGORY_SYSTEM_PROMPTS["dao"])
+        logger.info(f"Generating {platform}/{category} content for: {topic[:50]}...")
 
         try:
             response = self.client.chat.completions.create(
@@ -66,15 +91,7 @@ class ContentGenerator:
                 max_tokens=self.gen_config.get("max_tokens", 4096),
                 temperature=self.gen_config.get("temperature", 0.7),
                 messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "你是MiMo，是小米公司研发的AI智能助手。"
-                            "你正在为一个AI领域的内容账号创作内容，账号定位是：「AI时代必备心法。在这里，看懂AI的道与术。」"
-                            "所有内容都需要从AI视角切入，提供AI时代的洞察、工具、方法论。"
-                            "请严格按照要求的JSON格式输出。"
-                        ),
-                    },
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
                 ],
             )
@@ -141,13 +158,13 @@ class ContentGenerator:
 
         return processed, media_urls
 
-    def generate_for_topic(self, topic_id: int, topic_title: str, platforms: list[str] | None = None) -> list[Path]:
+    def generate_for_topic(self, topic_id: int, topic_title: str, category: str = "dao", platforms: list[str] | None = None) -> list[Path]:
         """Generate content for a topic across specified platforms. Returns file paths."""
         platforms = platforms or get_enabled_platforms(self.config)
         file_paths = []
 
         for platform in platforms:
-            result = self._generate_for_platform(topic_title, platform)
+            result = self._generate_for_platform(topic_title, platform, category)
             if not result:
                 continue
 
@@ -175,16 +192,31 @@ class ContentGenerator:
 
         return file_paths
 
-    def run(self, limit: int = 5) -> dict:
-        """Generate content for all new topics. Returns summary."""
-        topics = self.db.get_topics(status="new", limit=limit)
+    def run(self, limit: int = 1, category: str | None = None) -> dict:
+        """Generate content for all new topics. Returns summary.
+
+        Args:
+            limit: Max number of topics to process per category (default: 1).
+            category: If set, only generate for this category ('dao' or 'shu').
+        """
+        if category:
+            # 单类别模式：只处理指定类别
+            topics = self.db.get_topics(status="new", category=category, limit=limit)
+        else:
+            # 双类别模式：分别处理"道"和"术"，每类各limit篇
+            dao_topics = self.db.get_topics(status="new", category="dao", limit=limit)
+            shu_topics = self.db.get_topics(status="new", category="shu", limit=limit)
+            topics = dao_topics + shu_topics
+
         if not topics:
             logger.info("No new topics to generate content for")
             return {"topics_processed": 0, "contents_created": 0}
 
         total_contents = 0
         for topic in topics:
-            paths = self.generate_for_topic(topic["id"], topic["title"])
+            paths = self.generate_for_topic(
+                topic["id"], topic["title"], category=topic.get("category", "dao")
+            )
             total_contents += len(paths)
 
         summary = {

@@ -12,6 +12,8 @@ mimo:
 generation:
   max_tokens: 4096
   temperature: 0.7
+  # 每类别默认生成数量（道和术各生成几篇）
+  default_limit: 1
   # 生成语言
   language: "zh-CN"
   # 自动生成配图
@@ -26,10 +28,19 @@ dashscope:
   # 图片保存目录
   media_dir: "media"
 
-# 热点监控（今日头条热榜）
+# 热点监控
 monitor:
-  # 每次采集的最大热点数
+  # 每次采集的最大热点数（每个数据源）
   max_topics: 10
+  # 数据源配置
+  sources:
+    # 道：社会热点数据源
+    dao:
+      - toutiao              # 今日头条热榜
+    # 术：AI技术热点数据源
+    shu:
+      - 36kr                 # 36kr AI/科技快讯
+      - hackernews           # Hacker News AI相关话题
 
 # 发布平台配置
 platforms:

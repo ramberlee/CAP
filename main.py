@@ -51,6 +51,7 @@ def get_store(config: dict) -> ContentStore:
 @app.command()
 def monitor(
     topic: list[str] = typer.Option([], "--topic", "-t", help="手动添加热点话题"),
+    category: str = typer.Option(None, "--category", "-c", help="只采集指定类别: dao(社会热点) / shu(AI技术)"),
 ):
     """采集热点话题。"""
     db, config = get_db_and_config()
@@ -58,27 +59,31 @@ def monitor(
 
     m = TopicMonitor(db, config)
     manual = list(topic) if topic else None
-    new_count = m.run(manual_topics=manual)
+    new_count = m.run(manual_topics=manual, category=category)
 
-    console.print(f"\n[bold green]采集完成: {new_count} 个新热点已保存[/bold green]")
+    cat_label = {"dao": "道(社会热点)", "shu": "术(AI技术)"}.get(category, "全部")
+    console.print(f"\n[bold green]采集完成: {new_count} 个新热点已保存 [{cat_label}][/bold green]")
 
     # Show current topics
-    topics = db.get_topics(status="new", limit=10)
+    topics = db.get_topics(status="new", category=category, limit=10)
     if topics:
         table = Table(title="待处理热点")
         table.add_column("ID", style="dim")
+        table.add_column("类别")
         table.add_column("来源")
         table.add_column("话题")
         table.add_column("热度")
         for t in topics:
-            table.add_row(str(t["id"]), t["source"], t["title"][:40], str(t["heat"]))
+            cat_display = "道" if t.get("category") == "dao" else "术"
+            table.add_row(str(t["id"]), cat_display, t["source"], t["title"][:40], str(t["heat"]))
         console.print(table)
 
 
 @app.command()
 def generate(
-    limit: int = typer.Option(5, "--limit", "-l", help="最大处理热点数"),
+    limit: int = typer.Option(None, "--limit", "-l", help="每类别最大处理热点数 (默认: 配置文件中的 default_limit 或 1)"),
     topic: list[str] = typer.Option([], "--topic", "-t", help="手动添加热点话题并生成"),
+    category: str = typer.Option(None, "--category", "-c", help="只生成指定类别: dao(道) / shu(术)"),
 ):
     """AI 生成内容，保存到 output/ 文件夹。"""
     db, config = get_db_and_config()
@@ -87,13 +92,20 @@ def generate(
     # If manual topics provided, add them first
     if topic:
         m = TopicMonitor(db, config)
-        m.run(manual_topics=list(topic))
+        m.run(manual_topics=list(topic), category=category or "dao")
+
+    # 从配置文件读取默认生成数量，如果未指定则使用配置值或默认值1
+    if limit is None:
+        limit = config.get("generation", {}).get("default_limit", 1)
 
     g = ContentGenerator(db, config)
-    summary = g.run(limit=limit)
+    summary = g.run(limit=limit, category=category)
 
-    console.print(f"\n[bold green]生成完成: 处理 {summary['topics_processed']} 个热点, 创建 {summary['contents_created']} 条内容[/bold green]")
+    cat_label = {"dao": "道", "shu": "术"}.get(category, "全部")
+    console.print(f"\n[bold green]生成完成 [{cat_label}]: 处理 {summary['topics_processed']} 个热点, 创建 {summary['contents_created']} 条内容[/bold green]")
     console.print("[dim]文件保存在 output/ 文件夹，可直接编辑[/dim]")
+    if not category:
+        console.print(f"[dim]提示: 每类别默认生成 {limit} 篇，使用 --limit 参数可调整数量[/dim]")
 
 
 @app.command()
@@ -118,8 +130,9 @@ def publish(
 @app.command()
 def run(
     topic: list[str] = typer.Option([], "--topic", "-t", help="手动添加热点话题"),
-    limit: int = typer.Option(5, "--limit", "-l", help="最大处理数"),
+    limit: int = typer.Option(None, "--limit", "-l", help="每类别最大处理数 (默认: 配置文件中的 default_limit 或 1)"),
     dry_run: bool = typer.Option(False, "--dry-run", help="试运行"),
+    category: str = typer.Option(None, "--category", "-c", help="只处理指定类别: dao(道) / shu(术)"),
 ):
     """一键执行全流程: 采集 → 生成 → 发布（确认后）。"""
     db, config = get_db_and_config()
@@ -127,16 +140,20 @@ def run(
 
     console.print("[bold cyan]===== 内容自动生产线 =====[/bold cyan]\n")
 
+    # 从配置文件读取默认生成数量，如果未指定则使用配置值或默认值1
+    if limit is None:
+        limit = config.get("generation", {}).get("default_limit", 1)
+
     # Step 1: Monitor
     console.print("[bold]Step 1/3: 热点采集[/bold]")
     m = TopicMonitor(db, config)
-    new_count = m.run(manual_topics=list(topic) if topic else None)
+    new_count = m.run(manual_topics=list(topic) if topic else None, category=category)
     console.print(f"  采集到 {new_count} 个新热点\n")
 
     # Step 2: Generate
     console.print("[bold]Step 2/3: AI 内容生成[/bold]")
     g = ContentGenerator(db, config)
-    gen_summary = g.run(limit=limit)
+    gen_summary = g.run(limit=limit, category=category)
     console.print(f"  生成 {gen_summary['contents_created']} 条内容")
     console.print("  [dim]文件保存在 output/，可编辑后发布[/dim]\n")
 
@@ -167,6 +184,8 @@ def status():
 
     table.add_row("热点总数", str(db_stats["topics_total"]))
     table.add_row("待处理热点", str(db_stats["topics_new"]))
+    table.add_row("  ├ 道(社会热点)", str(db_stats.get("dao_new", 0)))
+    table.add_row("  └ 术(AI技术)", str(db_stats.get("shu_new", 0)))
     table.add_row("")
     table.add_row("内容文件总数", str(file_stats["total"]))
     table.add_row("待发布 (approved)", str(file_stats.get("approved", 0)))

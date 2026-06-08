@@ -19,21 +19,39 @@ CAP - Content Auto Pipeline（内容自动生产线）
 
 ### 2.1 热点采集模块 (Monitor)
 
-#### FR-2.1.1 今日头条热榜采集
-- **描述**: 自动抓取今日头条热榜数据
+#### FR-2.1.1 热点分类采集
+- **描述**: 支持两类热点采集，分别对应账号的「道」与「术」内容定位
+- **分类**:
+  - **道(dao)**: 实时社会热点，用于生成社会趋势洞察类文章
+  - **术(shu)**: AI技术热点，用于生成AI技术深度解读类文章
+
+#### FR-2.1.2 今日头条热榜采集（道）
+- **描述**: 自动抓取今日头条热榜数据，归类为「道」
 - **数据源**: `https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc`
-- **采集字段**: 标题(Title)、链接(Url)、热度值(HotValue)
+- **采集字段**: 标题(Title)、链接(Url)、热度值(HotValue)、分类(category=dao)
 - **采集数量**: 可配置，默认最多 10 条
-- **去重机制**: 基于标题去重，已采集的话题不重复入库
 
-#### FR-2.1.2 手动话题输入
+#### FR-2.1.3 36kr AI快讯采集（术）
+- **描述**: 自动抓取36kr科技快讯，过滤AI相关内容，归类为「术」
+- **数据源**: `https://36kr.com/api/newsflash`
+- **过滤**: 基于AI关键词（ai, llm, gpt, machine learning等）过滤非AI内容
+- **采集字段**: 标题、链接、分类(category=shu)
+
+#### FR-2.1.4 Hacker News AI话题采集（术）
+- **描述**: 自动抓取Hacker News热门故事，过滤AI相关内容，归类为「术」
+- **数据源**: `https://hacker-news.firebaseio.com/v0/`
+- **过滤**: 基于AI关键词过滤非AI内容
+- **采集字段**: 标题、链接、热度(score)、分类(category=shu)
+
+#### FR-2.1.5 手动话题输入
 - **描述**: 支持通过 CLI 参数手动添加热点话题
-- **参数**: `--topic` / `-t`，支持多次指定
-- **示例**: `python main.py monitor -t "AI编程" -t "ChatGPT"`
+- **参数**: `--topic` / `-t`，支持多次指定；`--category` / `-c` 指定分类
+- **示例**: `python main.py monitor -t "AI编程" -c shu`
 
-#### FR-2.1.3 话题持久化
+#### FR-2.1.6 话题持久化
 - **描述**: 采集的话题存储到 SQLite 数据库
-- **存储字段**: 来源、标题、链接、热度、状态、采集时间
+- **存储字段**: 来源、标题、链接、热度、分类(dao/shu)、状态、采集时间
+- **去重机制**: 基于标题去重，已采集的话题不重复入库
 - **状态流转**: new → processing → completed
 
 ---
@@ -45,7 +63,10 @@ CAP - Content Auto Pipeline（内容自动生产线）
 - **支持平台**: 小红书、微信公众号、抖音（通过 `config.platforms.{name}.enabled` 控制是否启用）
 - **API**: MiMo API（OpenAI 兼容格式）
 - **模型**: mimo-v2.5-pro（可配置）
-- **模板**: 每个平台独立的 prompt 模板（`templates/` 目录）
+- **模板**: 每个平台独立的 prompt 模板（`templates/` 目录），按「道/术」分类
+  - 道模板: `{platform}_dao.md` - 社会热点解读，AI视角洞察
+  - 术模板: `{platform}_shu.md` - AI技术深度解读，实操方法
+  - 兼容: 若分类模板不存在，回退到 `{platform}.md`
 
 #### FR-2.2.2 内容格式要求
 
@@ -144,15 +165,16 @@ CAP - Content Auto Pipeline（内容自动生产线）
   - `--topic` / `-t`: 手动添加话题
   - `--limit` / `-l`: 最大处理数（默认 5）
   - `--dry-run`: 试运行
+  - `--category` / `-c`: 只处理指定类别（dao/shu）
 
 #### FR-2.4.2 分步执行
-- `python main.py monitor`: 仅采集热点
-- `python main.py generate`: 仅生成内容
+- `python main.py monitor [-c dao|shu]`: 仅采集热点，可按类别筛选
+- `python main.py generate [-c dao|shu]`: 仅生成内容，可按类别筛选
 - `python main.py publish`: 仅发布内容
 
 #### FR-2.4.3 状态查看
 - **命令**: `python main.py status`
-- **显示**: 热点总数、待处理热点数、内容文件总数、待发布数、已发布数
+- **显示**: 热点总数、待处理热点数（含道/术分类）、内容文件总数、待发布数、已发布数
 
 #### FR-2.4.4 内容查看
 - **命令**: `python main.py show`
@@ -216,23 +238,24 @@ CAP - Content Auto Pipeline（内容自动生产线）
 ### 4.2 数据流
 
 ```
-今日头条热榜
-     │
-     ▼
-┌──────────┐     ┌──────────────┐     ┌──────────────┐
-│  Monitor  │────▶│  Generator   │────▶│  Publisher   │
-│ (热点采集) │     │ (AI内容生成)  │     │ (多平台发布)  │
-└──────────┘     └──────────────┘     └──────────────┘
-     │                  │                     │
-     ▼                  ▼                     ▼
-  SQLite DB        output/*.md           微信/小红书/抖音
-                + media/*.png
+今日头条热榜 ─────┐
+(社会热点·道)      │
+                   ▼
+36kr AI快讯 ────►┌──────────┐     ┌──────────────┐     ┌──────────────┐
+Hacker News ────►│  Monitor  │────▶│  Generator   │────▶│  Publisher   │
+(AI技术·术)       │ (热点采集) │     │ (AI内容生成)  │     │ (多平台发布)  │
+                 └──────────┘     └──────────────┘     └──────────────┘
+                      │                  │                     │
+                      ▼                  ▼                     ▼
+               SQLite DB           output/*.md           微信/小红书/抖音
+            (category: dao/shu)  + media/*.png
 ```
 
 ### 4.3 存储设计
 
 **SQLite (db/pipeline.db)** - 仅用于热点去重:
-- `topics` 表: id, source, title, url, heat, status, created_at
+- `topics` 表: id, source, title, url, heat, category, status, created_at
+- category 字段: `dao`(社会热点) / `shu`(AI技术热点)
 
 **文件系统 (output/)** - 内容存储:
 ```
@@ -273,7 +296,13 @@ dashscope:          # 阿里云百炼配置
   media_dir:        # 图片保存目录
 
 monitor:            # 热点采集配置
-  max_topics:       # 最大采集数
+  max_topics:       # 每个数据源最大采集数
+  sources:          # 数据源配置
+    dao:            # 道：社会热点源
+      - toutiao
+    shu:            # 术：AI技术热点源
+      - 36kr
+      - hackernews
 
 platforms:          # 发布平台配置
   wechat:           # 微信公众号
@@ -329,7 +358,9 @@ logging:            # 日志配置
 | MiMo API | AI 内容生成 | `mimo.api_key` |
 | 阿里云百炼 | AI 配图生成 | `dashscope.api_key` |
 | 微信公众号 API | 草稿发布 | `platforms.wechat.app_id/secret` |
-| 今日头条 | 热点数据源 | 无需配置 |
+| 今日头条 | 社会热点数据源(道) | 无需配置 |
+| 36kr | AI技术热点数据源(术) | 无需配置 |
+| Hacker News | AI技术热点数据源(术) | 无需配置 |
 
 ---
 

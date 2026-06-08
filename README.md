@@ -4,7 +4,8 @@
 
 ## 功能特性
 
-- **热点采集** - 自动抓取今日头条热榜，支持手动添加话题
+- **热点采集** - 支持两类热点：「道」社会热点（今日头条）+「术」AI技术热点（36kr、Hacker News），支持分类采集
+- **道与术分类** - 社会热点归「道」、AI技术热点归「术」，自动生成不同定位的内容
 - **AI 内容生成** - 基于 MiMo 大模型，一键生成小红书、微信公众号、抖音三平台内容
 - **AI 配图生成** - 集成阿里云百炼 Qwen-Image，自动为文章生成配图
 - **文件化存储** - 内容以 Markdown 文件保存在 `output/` 目录，可直接用编辑器修改
@@ -19,15 +20,18 @@ CAP/
 ├── config.yaml.example          # 配置文件模板
 ├── config.yaml                  # 配置文件（从 example 复制，不入库）
 ├── requirements.txt             # Python 依赖
-├── templates/                   # 各平台内容模板
-│   ├── xiaohongshu.md
-│   ├── wechat.md
-│   └── douyin.md
+├── templates/                   # 各平台内容模板（按道/术分类）
+│   ├── xiaohongshu_dao.md       # 小红书·道（社会热点）
+│   ├── xiaohongshu_shu.md       # 小红书·术（AI技术）
+│   ├── wechat_dao.md            # 公众号·道
+│   ├── wechat_shu.md            # 公众号·术
+│   ├── douyin_dao.md            # 抖音·道
+│   └── douyin_shu.md            # 抖音·术
 ├── modules/
 │   ├── config.py                # 配置加载
 │   ├── database.py              # SQLite 数据库（热点去重）
 │   ├── content_store.py         # 文件化内容存储
-│   ├── monitor.py               # 热点采集（今日头条）
+│   ├── monitor.py               # 热点采集（道：今日头条，术：36kr+HN）
 │   ├── generator.py             # AI 内容生成（MiMo API）
 │   ├── imager.py                # AI 配图生成（DashScope SDK）
 │   ├── publisher.py             # 发布调度器
@@ -76,6 +80,13 @@ dashscope:
   api_key: "your-dashscope-api-key"
   model: "qwen-image-2.0-pro"
 
+# 热点采集数据源
+monitor:
+  max_topics: 10
+  sources:
+    dao: [toutiao]            # 道：社会热点源
+    shu: [36kr, hackernews]   # 术：AI技术热点源
+
 # 发布平台配置（enabled 控制是否启用该平台的内容生成和发布）
 platforms:
   wechat:
@@ -101,17 +112,24 @@ platforms:
 
 ```bash
 # 一键全流程（采集 → 生成 → 发布）
+# 默认生成 1篇"道" + 1篇"术"
 python main.py run
 
 # 分步执行
-python main.py monitor              # 采集热点
-python main.py generate -l 3        # 生成内容（最多3条）
+python main.py monitor              # 采集全部热点（道+术）
+python main.py generate             # 生成内容（默认: 1篇道+1篇术）
+python main.py generate -l 3        # 生成内容（3篇道+3篇术）
 python main.py publish -p wechat    # 发布到微信
+
+# 按类别采集和生成
+python main.py monitor -c dao       # 只采集社会热点（道）
+python main.py monitor -c shu       # 只采集AI技术热点（术）
+python main.py run -c shu           # 全流程只处理「术」类
 
 # 手动指定话题
 python main.py run -t "AI编程" -t "ChatGPT"
 
-# 查看状态
+# 查看状态（显示道/术分类统计）
 python main.py status
 
 # 查看内容
@@ -121,17 +139,45 @@ python main.py show -p wechat
 python main.py edit wechat 1
 ```
 
+#### 默认生成数量
+
+- **默认行为**: 每次运行生成 **1篇"道"文章** 和 **1篇"术"文章**
+- **自定义数量**: 使用 `--limit` 参数调整，如 `python main.py generate --limit 5`
+- **配置文件**: 在 `config.yaml` 中设置 `generation.default_limit` 修改默认值
+
+详细说明请参考 [docs/generation_limit_usage.md](docs/generation_limit_usage.md)
+
+#### 道与术分类说明
+
+| 类别 | 定位 | 数据源 | 内容风格 |
+|------|------|--------|----------|
+| **道(dao)** | 社会趋势洞察 | 今日头条热榜 | 用AI思维解读社会热点，提供认知升级 |
+| **术(shu)** | AI技术解读 | 36kr快讯 + Hacker News | 技术深度分析，工具推荐，实操方法 |
+
 ## CLI 命令
 
 | 命令 | 说明 |
 |------|------|
-| `monitor` | 采集热点话题 |
-| `generate` | AI 生成内容，保存到 output/ |
-| `publish` | 发布已生成的内容（发布前确认） |
-| `run` | 一键全流程 |
-| `status` | 查看流水线状态 |
+| `monitor [-c dao\|shu]` | 采集热点话题，可按道/术分类采集 |
+| `generate [-c dao\|shu]` | AI 生成内容，可按类别筛选 |
+| `publish [-p platform]` | 发布已生成的内容（发布前确认） |
+| `run [-c dao\|shu]` | 一键全流程，可指定类别 |
+| `status` | 查看流水线状态（含道/术统计） |
 | `show` | 查看内容列表 |
 | `edit` | 用编辑器打开内容文件 |
+
+## 内容模板
+
+模板按平台 × 类别组织，优先加载 `{platform}_{category}.md`，回退到 `{platform}.md`：
+
+| 模板 | 类别 | 说明 |
+|------|------|------|
+| `xiaohongshu_dao.md` | 道 | 小红书·社会热点洞察 |
+| `xiaohongshu_shu.md` | 术 | 小红书·AI技术干货 |
+| `wechat_dao.md` | 道 | 公众号·趋势深度解读 |
+| `wechat_shu.md` | 术 | 公众号·技术深度分析 |
+| `douyin_dao.md` | 道 | 抖音·热点认知洞察 |
+| `douyin_shu.md` | 术 | 抖音·技术干货分享 |
 
 ## 内容文件格式
 
@@ -168,6 +214,18 @@ topic_id: 1
 | `apple` | 极致留白，黑白灰 |
 | `wechat` | 微信公众号原生绿 |
 | `notion` | 黑白灰极简 |
+
+## API 文档
+
+详细的模块 API 文档见 [docs/API.md](docs/API.md)，包含：
+
+| 模块 | 说明 |
+|------|------|
+| `modules.database` | SQLite 数据库层（话题增删改查、分类统计） |
+| `modules.monitor` | 热点采集（今日头条/36kr/Hacker News，道/术分类） |
+| `modules.generator` | AI 内容生成（MiMo API，分类模板和提示词） |
+| `modules.content_store` | 文件化内容存储（Markdown + YAML frontmatter） |
+| `modules.config` | 配置加载 |
 
 ## 技术栈
 
