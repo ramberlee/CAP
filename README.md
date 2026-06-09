@@ -8,6 +8,7 @@
 - **道与术分类** - 社会热点归「道」、AI技术热点归「术」，自动生成不同定位的内容
 - **AI 内容生成** - 基于 MiMo 大模型，一键生成小红书、微信公众号、抖音三平台内容
 - **AI 配图生成** - 集成阿里云百炼 Qwen-Image，自动为文章生成配图
+- **抖音视频生成** - 口播脚本经 MiMo TTS 生成音频，再由 Wan2.7-T2V 生成带配音的短视频
 - **文件化存储** - 内容以 Markdown 文件保存在 `output/` 目录，可直接用编辑器修改
 - **微信公众号发布** - 支持草稿箱发布，内置 WeChat-Markdown 排版引擎，多主题切换
 - **多平台发布** - 微信公众号、小红书、抖音，逐平台确认后发布
@@ -34,6 +35,8 @@ CAP/
 │   ├── monitor.py               # 热点采集（道：今日头条，术：36kr+HN）
 │   ├── generator.py             # AI 内容生成（MiMo API）
 │   ├── imager.py                # AI 配图生成（DashScope SDK）
+│   ├── vgen.py                  # AI 视频生成（Wan2.7-T2V + TTS 配音）
+│   ├── tts.py                   # TTS 语音合成（MiMo TTS）
 │   ├── publisher.py             # 发布调度器
 │   └── platforms/
 │       ├── wechat.py            # 微信公众号发布
@@ -69,16 +72,21 @@ cp config.yaml.example config.yaml
 编辑 `config.yaml`，填入以下关键配置：
 
 ```yaml
-# MiMo API（内容生成）
+# MiMo API（内容生成 + TTS 语音合成）
 mimo:
   api_key: "your-mimo-api-key"
   base_url: "https://token-plan-cn.xiaomimimo.com/v1"
   model: "mimo-v2.5-pro"
+  tts_model: "mimo-v2.5-tts"
+  tts_voice: "zh-female"
 
-# 阿里云百炼（配图生成）
+# 阿里云百炼（配图 + 视频生成）
 dashscope:
   api_key: "your-dashscope-api-key"
   model: "qwen-image-2.0-pro"
+  video_model: "wan2.7-t2v-turbo"
+  video_size: "1280*720"
+  video_duration: 15
 
 # 热点采集数据源
 monitor:
@@ -200,6 +208,33 @@ topic_id: 1
 ![配图](media/content_1_1.png)
 ```
 
+抖音内容包含视频和音频文件：
+
+```markdown
+---
+platform: douyin
+status: approved
+tags: [#AI, #热点]
+media_urls: [media/content_102_1.mp4, media/content_102_tts.mp3]
+created_at: "2026-06-05T12:00:00"
+topic_id: 102
+---
+
+# 视频标题
+
+【钩子】一句话hook
+
+---
+
+【价值】核心观点
+
+---
+
+【收尾】引导互动
+
+[视频](media/content_102_1.mp4)
+```
+
 - `status: approved` → 待发布
 - `status: published` → 已发布
 - 可直接用任何编辑器修改文件内容
@@ -224,6 +259,9 @@ topic_id: 1
 | `modules.database` | SQLite 数据库层（话题增删改查、分类统计） |
 | `modules.monitor` | 热点采集（今日头条/36kr/Hacker News，道/术分类） |
 | `modules.generator` | AI 内容生成（MiMo API，分类模板和提示词） |
+| `modules.imager` | AI 配图生成（DashScope Qwen-Image） |
+| `modules.vgen` | AI 视频生成（Wan2.7-T2V，支持音频同步） |
+| `modules.tts` | TTS 语音合成（MiMo TTS，口播脚本转音频） |
 | `modules.content_store` | 文件化内容存储（Markdown + YAML frontmatter） |
 | `modules.config` | 配置加载 |
 
@@ -232,6 +270,8 @@ topic_id: 1
 - **CLI**: Typer + Rich
 - **AI 内容生成**: MiMo API（OpenAI 兼容）
 - **AI 配图**: 阿里云百炼 DashScope SDK（Qwen-Image）
+- **AI 视频生成**: 阿里云百炼 Wan2.7-T2V（文生视频 + 音频同步）
+- **TTS 语音合成**: MiMo TTS（OpenAI 兼容）
 - **Markdown 渲染**: markdown-it-py + BeautifulSoup4
 - **浏览器自动化**: Playwright（小红书/抖音发布）
 - **数据库**: SQLite（热点去重）

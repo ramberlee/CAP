@@ -7,6 +7,11 @@ mimo:
   api_key: "your-mimo-api-key"           # 替换为你的 MiMo API key
   base_url: "https://token-plan-cn.xiaomimimo.com/v1"
   model: "mimo-v2.5-pro"
+  # TTS 语音合成配置（通过 chat completions 接口调用）
+  tts_model: "mimo-v2.5-tts"              # 语音合成模型
+  tts_voice: "Chloe"                       # 音色名称
+  tts_voice_prompt: "用自然、亲切、有感染力的中文语调朗读，像一位专业的短视频口播博主。"
+  # tts_base_url: "https://your-tts-endpoint/v1"  # TTS专用地址（默认同 base_url）
 
 # 内容生成参数
 generation:
@@ -18,6 +23,8 @@ generation:
   language: "zh-CN"
   # 自动生成配图
   auto_image: true
+  # 自动生成视频（抖音等视频平台）
+  auto_video: true
 
 # Qwen-Image 生图配置（阿里云百炼）
 dashscope:
@@ -27,6 +34,10 @@ dashscope:
   size: "1472*1104"                       # 图片分辨率
   # 图片保存目录
   media_dir: "media"
+  # 文生视频配置（Wan2.7-T2V）
+  video_model: "wan2.7-t2v"              # 可选: wan2.7-t2v / wan2.7-t2v-plus
+  video_size: "1280*720"                  # 视频分辨率
+  video_duration: 15                      # 视频时长(秒)
 
 # 热点监控
 monitor:
@@ -71,6 +82,8 @@ platforms:
     headless: false
     # 浏览器通道: chrome / msedge（使用系统已安装的浏览器）
     channel: "msedge"
+    # 发布后等待秒数（留给验证码/审核弹窗处理时间）
+    post_publish_wait: 30
 
 # 数据库
 database:

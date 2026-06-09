@@ -51,9 +51,21 @@ class PublishDispatcher:
             logger.error(f"Publish failed for {content['title']}: {e}")
             return {"success": False, "error": str(e)}
 
+    def _has_video(self, content: dict) -> bool:
+        """Check if content has a video file (for Douyin)."""
+        for url in content.get("media_urls", []):
+            if url.endswith(".mp4"):
+                return True
+        return False
+
     def run(self, platform: str | None = None, dry_run: bool = False) -> dict:
         """List approved contents, confirm with user, then publish."""
         contents = self.store.load_contents(platform=platform, status="approved")
+
+        # For Douyin, only publish content with video files
+        if platform == "douyin":
+            contents = [c for c in contents if self._has_video(c)]
+
         if not contents:
             logger.info("No approved contents to publish")
             return {"total": 0, "success": 0, "failed": 0}
@@ -75,6 +87,11 @@ class PublishDispatcher:
             console.print("[yellow]已取消发布[/yellow]")
             return {"total": len(contents), "success": 0, "failed": 0, "cancelled": True}
 
+        # Douyin uses batch publishing (one browser session for all videos)
+        if platform == "douyin":
+            return self._run_batch(contents)
+
+        # Other platforms: publish one by one
         success = 0
         failed = 0
         for content in contents:
@@ -85,6 +102,29 @@ class PublishDispatcher:
             else:
                 failed += 1
                 console.print(f"  [red]发布失败:[/red] {content['title'][:30]} - {result.get('error', '')}")
+
+        summary = {"total": len(contents), "success": success, "failed": failed}
+        logger.info(f"Publishing complete: {summary}")
+        return summary
+
+    def _run_batch(self, contents: list[dict]) -> dict:
+        """Batch publish for Douyin - one browser session for all videos."""
+        publisher = self._publishers.get("douyin")
+        if not publisher:
+            return {"total": 0, "success": 0, "failed": 0}
+
+        results = publisher.publish_batch(contents)
+
+        success = 0
+        failed = 0
+        for content, result in zip(contents, results):
+            if result.get("success"):
+                success += 1
+                self.store.update_status(content["filepath"], "published")
+                console.print(f"  [green]发布成功:[/green] {content['title'][:40]}")
+            else:
+                failed += 1
+                console.print(f"  [red]发布失败:[/red] {content['title'][:40]} - {result.get('error', '')}")
 
         summary = {"total": len(contents), "success": success, "failed": failed}
         logger.info(f"Publishing complete: {summary}")

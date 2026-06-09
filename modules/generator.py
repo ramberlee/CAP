@@ -10,11 +10,15 @@ from openai import OpenAI
 from modules.database import Database
 from modules.content_store import ContentStore
 from modules.imager import ImageGenerator
+from modules.vgen import VideoGenerator
+from modules.tts import TTSSynthesizer
+import requests
 
 logger = logging.getLogger(__name__)
 
 PLATFORMS = ["xiaohongshu", "wechat", "douyin"]
 IMAGE_PLACEHOLDER_RE = re.compile(r"\[IMAGE:(.*?)]")
+VIDEO_PLACEHOLDER_RE = re.compile(r"\[VIDEO:(.*?)]")
 
 CATEGORY_SYSTEM_PROMPTS = {
     "dao": (
@@ -56,6 +60,10 @@ class ContentGenerator:
         self.gen_config = config.get("generation", {})
         self.auto_image = self.gen_config.get("auto_image", False)
         self.imager = ImageGenerator(config) if self.auto_image else None
+        self.auto_video = self.gen_config.get("auto_video", False)
+        self.vgen = VideoGenerator(config) if self.auto_video else None
+        self.tts = TTSSynthesizer(config) if self.auto_video else None
+        self.ds_api_key = config.get("dashscope", {}).get("api_key", "")
         self.store = ContentStore(
             output_dir=config.get("output_dir", "output"),
             media_dir=config.get("dashscope", {}).get("media_dir", "media"),
@@ -116,6 +124,65 @@ class ContentGenerator:
             logger.error(f"Generation failed for {platform}: {e}")
             return None
 
+    def _upload_to_oss(self, file_path: str, model_name: str) -> str | None:
+        """Upload a local file to DashScope OSS and return oss:// URL.
+
+        Uses the temporary file upload API:
+        1. GET /api/v1/uploads?action=getPolicy&model=xxx
+        2. POST file to upload_host with policy data
+        3. Return oss:// URL
+        """
+        if not self.ds_api_key:
+            logger.warning("DashScope API key not configured, skipping upload")
+            return None
+
+        try:
+            # Step 1: Get upload policy
+            policy_url = "https://dashscope.aliyuncs.com/api/v1/uploads"
+            headers = {
+                "Authorization": f"Bearer {self.ds_api_key}",
+                "Content-Type": "application/json",
+            }
+            params = {
+                "action": "getPolicy",
+                "model": model_name,
+            }
+            resp = requests.get(policy_url, headers=headers, params=params, timeout=10)
+            if resp.status_code != 200:
+                logger.error(f"Get upload policy failed: {resp.text}")
+                return None
+
+            policy_data = resp.json().get("data", {})
+
+            # Step 2: Upload file to OSS
+            file_name = Path(file_path).name
+            key = f"{policy_data['upload_dir']}/{file_name}"
+
+            with open(file_path, "rb") as f:
+                files = {
+                    "OSSAccessKeyId": (None, policy_data["oss_access_key_id"]),
+                    "Signature": (None, policy_data["signature"]),
+                    "policy": (None, policy_data["policy"]),
+                    "x-oss-object-acl": (None, policy_data.get("x_oss_object_acl", "private")),
+                    "x-oss-forbid-overwrite": (None, policy_data.get("x_oss_forbid_overwrite", "true")),
+                    "key": (None, key),
+                    "success_action_status": (None, "200"),
+                    "file": (file_name, f),
+                }
+                resp = requests.post(policy_data["upload_host"], files=files, timeout=60)
+
+            if resp.status_code != 200:
+                logger.error(f"Upload file to OSS failed: {resp.text}")
+                return None
+
+            oss_url = f"oss://{key}"
+            logger.info(f"File uploaded to OSS: {oss_url}")
+            return oss_url
+
+        except Exception as e:
+            logger.error(f"OSS upload failed: {e}")
+            return None
+
     def _process_images(self, body: str, content_id: int, platform: str) -> tuple[str, list[str]]:
         """Replace [IMAGE:description] placeholders with generated images.
 
@@ -158,6 +225,76 @@ class ContentGenerator:
 
         return processed, media_urls
 
+    def _process_videos(self, body: str, content_id: int, platform: str) -> tuple[str, list[str]]:
+        """Replace [VIDEO:description] placeholders with generated videos.
+
+        For douyin: generates TTS audio from the script, uploads to DashScope OSS,
+        then passes audio_url to the video model for voice-synced video.
+
+        Returns (processed_body, list_of_local_video_paths).
+        """
+        if not self.vgen:
+            # No video generator, just strip placeholders
+            return VIDEO_PLACEHOLDER_RE.sub("", body), []
+
+        placeholders = list(VIDEO_PLACEHOLDER_RE.finditer(body))
+
+        # Prepare output media dir for this platform
+        output_media = Path("output") / platform / "media"
+        output_media.mkdir(parents=True, exist_ok=True)
+
+        # Generate TTS audio from script text (strip video placeholders first)
+        audio_oss_url = None
+        if self.tts:
+            script_text = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
+            audio_filename = f"content_{content_id}_tts.wav"
+            # Video model max duration is 30s, leave 2s margin
+            max_audio_duration = min(self.vgen.duration, 28) if self.vgen else 28
+            logger.info("Generating TTS audio for script...")
+            audio_path = self.tts.synthesize(script_text, audio_filename, max_duration=max_audio_duration)
+            if audio_path:
+                # Copy audio to output dir
+                src_audio = Path(audio_path)
+                dst_audio = output_media / src_audio.name
+                shutil.copy2(src_audio, dst_audio)
+
+                # Upload to DashScope OSS for video model
+                audio_oss_url = self._upload_to_oss(str(src_audio), self.vgen.model)
+
+        media_urls = []
+        processed = body
+
+        # If no [VIDEO:...] placeholder found, generate one from script text
+        if not placeholders:
+            script_for_video = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
+            desc = f"总时长15秒。{script_for_video[:200]}"
+            logger.info(f"No [VIDEO:...] placeholder found, auto-generating video description...")
+            placeholders_desc = [desc]
+        else:
+            placeholders_desc = [m.group(1).strip() for m in placeholders]
+
+        for i, desc in enumerate(placeholders_desc):
+            filename = f"content_{content_id}_{i+1}.mp4"
+            logger.info(f"Generating video {i+1}/{len(placeholders_desc)}: {desc[:50]}...")
+
+            video_path = self.vgen.generate(desc, filename, audio_url=audio_oss_url)
+            if video_path:
+                # Copy to output dir
+                src = Path(video_path)
+                dst = output_media / src.name
+                shutil.copy2(src, dst)
+
+                rel_path = f"media/{src.name}"
+                if placeholders:
+                    # Replace existing placeholder
+                    processed = processed.replace(placeholders[i].group(0), f"\n\n[视频]({rel_path})\n", 1)
+                else:
+                    # Auto-generated: append video reference
+                    processed += f"\n\n[视频]({rel_path})\n"
+                media_urls.append(str(dst))
+
+        return processed, media_urls
+
     def generate_for_topic(self, topic_id: int, topic_title: str, category: str = "dao", platforms: list[str] | None = None) -> list[Path]:
         """Generate content for a topic across specified platforms. Returns file paths."""
         platforms = platforms or get_enabled_platforms(self.config)
@@ -175,6 +312,11 @@ class ContentGenerator:
             # Process inline images
             content_id = topic_id * 100 + len(file_paths)
             body, media_urls = self._process_images(body, content_id, platform)
+
+            # Process inline videos (for douyin and other video-first platforms)
+            if platform == "douyin":
+                body, video_urls = self._process_videos(body, content_id, platform)
+                media_urls.extend(video_urls)
 
             filepath = self.store.save_content(
                 platform=platform,
