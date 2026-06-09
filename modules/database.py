@@ -30,11 +30,13 @@ class Database:
 
     def _init_db(self):
         with self._connect() as conn:
+            # Migrate: add category column if missing (before schema which creates index on it)
+            tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='topics'").fetchall()]
+            if tables:
+                cols = [row[1] for row in conn.execute("PRAGMA table_info(topics)").fetchall()]
+                if "category" not in cols:
+                    conn.execute("ALTER TABLE topics ADD COLUMN category TEXT DEFAULT 'dao'")
             conn.executescript(DB_SCHEMA)
-            # Migrate: add category column if missing (existing databases)
-            cols = [row[1] for row in conn.execute("PRAGMA table_info(topics)").fetchall()]
-            if "category" not in cols:
-                conn.execute("ALTER TABLE topics ADD COLUMN category TEXT DEFAULT 'dao'")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.db_path))
