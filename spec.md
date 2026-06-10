@@ -71,9 +71,10 @@ CAP - Content Auto Pipeline（内容自动生产线）
 #### FR-2.2.2 内容格式要求
 
 **小红书**:
-- 标题: 20字以内，带 emoji
-- 正文: 300-500字，口语化
+- 标题: 严格控制在 20 字以内（含 emoji），超出自动截断
+- 正文: 严格控制在 500 字以内（含 emoji 和标点），超出自动截断（发布上限 1000 字，预留标签空间）
 - 标签: 5-8 个话题标签
+- 图片: 必需，2-3 张配图
 - 输出: JSON `{title, body, tags}`
 
 **微信公众号**:
@@ -152,9 +153,13 @@ CAP - Content Auto Pipeline（内容自动生产线）
 - **配置**: `config.yaml` 中 `platforms.wechat.theme` 指定主题
 
 #### FR-2.3.4 小红书发布
-- **方式**: Playwright 浏览器自动化
-- **前提**: 已登录的 cookie 文件（`db/xhs_cookies.json`）
-- **流程**: 加载 cookie → 打开创作者页面 → 填写标题/正文/标签 → 上传图片 → 发布
+- **方式**: Playwright 浏览器自动化 + CDP（Chrome DevTools Protocol）
+- **前提**: 已登录的 cookie 文件（`db/xhs_cookies.json`），通过 `python tools/xhs_login.py` 登录保存
+- **内容限制**: 标题 ≤ 20 字，正文 ≤ 1000 字（生成时自动截断）
+- **流程**: 加载 cookie → 切换图文模式 → 上传图片 → CDP `Input.insertText` 填写正文 → CDP 穿透 Shadow DOM 点击发布按钮
+- **技术要点**:
+  - 小红书使用 TipTap/ProseMirror 编辑器，Playwright 的 `fill()`/`type()` 无法触发 Vue 框架更新，需通过 CDP `Input.insertText` 注入文本
+  - 发布按钮位于 `<xhs-publish-btn>` Shadow DOM (closed) 内，通过 CDP `DOM.getDocument(pierce=True)` + `DOM.querySelectorAll` 穿透查询，`Runtime.callFunctionOn` 调用 `.click()` 点击
 
 #### FR-2.3.5 抖音发布
 - **方式**: Playwright 浏览器自动化

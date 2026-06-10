@@ -60,7 +60,13 @@ class PublishDispatcher:
 
     def run(self, platform: str | None = None, dry_run: bool = False) -> dict:
         """List approved contents, confirm with user, then publish."""
-        contents = self.store.load_contents(platform=platform, status="approved")
+        # Only load content for platforms that have publishers enabled
+        if platform:
+            contents = self.store.load_contents(platform=platform, status="approved")
+        else:
+            contents = []
+            for p in self._publishers:
+                contents.extend(self.store.load_contents(platform=p, status="approved"))
 
         # For Douyin, only publish content with video files
         if platform == "douyin":
@@ -87,8 +93,8 @@ class PublishDispatcher:
             console.print("[yellow]已取消发布[/yellow]")
             return {"total": len(contents), "success": 0, "failed": 0, "cancelled": True}
 
-        # Douyin uses batch publishing (one browser session for all videos)
-        if platform == "douyin":
+        # Douyin and Xiaohongshu use batch publishing (one browser session for all posts)
+        if platform in ("douyin", "xiaohongshu"):
             return self._run_batch(contents)
 
         # Other platforms: publish one by one
@@ -108,8 +114,9 @@ class PublishDispatcher:
         return summary
 
     def _run_batch(self, contents: list[dict]) -> dict:
-        """Batch publish for Douyin - one browser session for all videos."""
-        publisher = self._publishers.get("douyin")
+        """Batch publish - one browser session for all posts (Douyin/Xiaohongshu)."""
+        platform = contents[0]["platform"] if contents else ""
+        publisher = self._publishers.get(platform)
         if not publisher:
             return {"total": 0, "success": 0, "failed": 0}
 

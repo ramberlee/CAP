@@ -309,6 +309,18 @@ class ContentGenerator:
             body = result.get("body", result.get("script", ""))
             tags = result.get("tags", [])
 
+            # Enforce Xiaohongshu limits
+            if platform == "xiaohongshu":
+                if len(title) > 20:
+                    logger.info(f"  Title truncated: {len(title)} -> 20 chars")
+                    title = title[:20]
+                # Body limit: 1000 chars minus tags space
+                tags_text = " ".join(tags) if tags else ""
+                max_body = 950 - len(tags_text) - 2 if tags_text else 950
+                if len(body) > max_body:
+                    logger.info(f"  Body truncated: {len(body)} -> {max_body} chars")
+                    body = body[:max_body].rsplit("。", 1)[0] + "。"
+
             # Process inline images
             content_id = topic_id * 100 + len(file_paths)
             body, media_urls = self._process_images(body, content_id, platform)

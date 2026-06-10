@@ -11,6 +11,8 @@
 - **抖音视频生成** - 口播脚本经 MiMo TTS 生成音频，再由 Wan2.7-T2V 生成带配音的短视频
 - **文件化存储** - 内容以 Markdown 文件保存在 `output/` 目录，可直接用编辑器修改
 - **微信公众号发布** - 支持草稿箱发布，内置 WeChat-Markdown 排版引擎，多主题切换
+- **小红书发布** - Playwright + CDP 浏览器自动化，自动上传图片、填写内容、Shadow DOM 穿透点击发布
+- **抖音发布** - Playwright 浏览器自动化，支持批量视频发布
 - **多平台发布** - 微信公众号、小红书、抖音，逐平台确认后发布
 
 ## 项目结构
@@ -41,8 +43,11 @@ CAP/
 │   └── platforms/
 │       ├── wechat.py            # 微信公众号发布
 │       ├── wechat_renderer.py   # 微信排版引擎（移植自 WeChat-Markdown）
-│       ├── xiaohongshu.py       # 小红书发布（Playwright）
-│       └── douyin.py            # 抖音发布（Playwright）
+│       ├── xiaohongshu.py       # 小红书发布（Playwright + CDP Shadow DOM）
+│       └── douyin.py            # 抖音发布（Playwright 批量发布）
+├── tools/
+│   ├── xhs_login.py             # 小红书登录（保存 Cookie）
+│   └── douyin_login.py          # 抖音登录（保存 Cookie）
 ├── output/                      # 生成的内容文件
 │   ├── xiaohongshu/
 │   ├── wechat/
@@ -128,6 +133,7 @@ python main.py monitor              # 采集全部热点（道+术）
 python main.py generate             # 生成内容（默认: 1篇道+1篇术）
 python main.py generate -l 3        # 生成内容（3篇道+3篇术）
 python main.py publish -p wechat    # 发布到微信
+python main.py publish -p xiaohongshu  # 发布到小红书
 
 # 按类别采集和生成
 python main.py monitor -c dao       # 只采集社会热点（道）
@@ -146,6 +152,28 @@ python main.py show -p wechat
 # 编辑内容
 python main.py edit wechat 1
 ```
+
+#### 小红书发布说明
+
+小红书发布需要先登录保存 Cookie：
+
+```bash
+# 1. 登录小红书创作者中心（浏览器会自动打开，扫码登录后按 Enter）
+python tools/xhs_login.py
+
+# 2. 发布
+python main.py publish -p xiaohongshu
+```
+
+**内容限制**（自动生成时会自动截断）：
+- 标题：≤ 20 字
+- 正文：≤ 1000 字
+- 图片：必需，支持 .png / .jpg / .jpeg / .webp
+
+**技术细节**：
+- 使用 Playwright 浏览器自动化 + CDP（Chrome DevTools Protocol）
+- 正文通过 CDP `Input.insertText` 注入 TipTap/ProseMirror 编辑器
+- 发布按钮位于 `<xhs-publish-btn>` Shadow DOM (closed) 内，通过 CDP `DOM.getDocument(pierce=True)` 穿透点击
 
 #### 默认生成数量
 
@@ -168,11 +196,11 @@ python main.py edit wechat 1
 |------|------|
 | `monitor [-c dao\|shu]` | 采集热点话题，可按道/术分类采集 |
 | `generate [-c dao\|shu]` | AI 生成内容，可按类别筛选 |
-| `publish [-p platform]` | 发布已生成的内容（发布前确认） |
+| `publish [-p platform]` | 发布到指定平台（wechat / xiaohongshu / douyin） |
 | `run [-c dao\|shu]` | 一键全流程，可指定类别 |
 | `status` | 查看流水线状态（含道/术统计） |
-| `show` | 查看内容列表 |
-| `edit` | 用编辑器打开内容文件 |
+| `show [-p platform]` | 查看内容列表 |
+| `edit <platform> <index>` | 用编辑器打开内容文件 |
 
 ## 内容模板
 
@@ -273,6 +301,6 @@ topic_id: 102
 - **AI 视频生成**: 阿里云百炼 Wan2.7-T2V（文生视频 + 音频同步）
 - **TTS 语音合成**: MiMo TTS（OpenAI 兼容）
 - **Markdown 渲染**: markdown-it-py + BeautifulSoup4
-- **浏览器自动化**: Playwright（小红书/抖音发布）
+- **浏览器自动化**: Playwright + CDP（小红书发布，Shadow DOM 穿透）
 - **数据库**: SQLite（热点去重）
 - **文件存储**: Markdown + YAML frontmatter
