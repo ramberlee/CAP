@@ -25,6 +25,12 @@ generation:
   auto_image: true
   # 自动生成视频（抖音等视频平台）
   auto_video: true
+  # 是否自动给生成的视频添加字幕
+  video_subtitles: true
+  video_subtitle_font: "Microsoft YaHei"
+  video_subtitle_size: 48
+  video_subtitle_line_chars: 16
+  video_subtitle_max_lines: 2
 
 # Qwen-Image 生图配置（阿里云百炼）
 dashscope:

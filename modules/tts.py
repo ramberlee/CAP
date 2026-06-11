@@ -79,12 +79,13 @@ class TTSSynthesizer:
             logger.warning(f"Audio trim failed: {e}")
             return filepath
 
-    def synthesize(self, script: str, filename: str, max_duration: float = 28) -> str | None:
-        """Generate audio from script text. Returns local file path or None.
+    def synthesize(self, script: str, filename: str, max_duration: float = 28) -> tuple[str, float, float] | None:
+        """Generate audio from script text. Returns (file_path, duration_seconds) or None.
 
         Args:
             script: The oral script text (may contain markers like 【钩子】).
             filename: Output filename (e.g. "content_100_1.wav").
+            max_duration: Maximum audio duration in seconds.
         """
         if not self.client.api_key:
             logger.warning("MiMo API key not configured, skipping TTS")
@@ -132,13 +133,14 @@ class TTSSynthesizer:
 
             # Check and trim audio duration to fit video model limit
             duration = self.get_audio_duration(str(filepath))
+            original_duration = duration
             if duration > max_duration:
                 logger.info(f"TTS audio {duration:.1f}s exceeds {max_duration}s limit, trimming...")
                 self.trim_audio(str(filepath), max_duration)
                 duration = self.get_audio_duration(str(filepath))
 
             logger.info(f"TTS saved: {filepath} ({len(audio_bytes)} bytes, {duration:.1f}s)")
-            return str(filepath)
+            return str(filepath), duration, original_duration
 
         except Exception as e:
             logger.warning(f"TTS generation failed (video will have no voice): {e}")

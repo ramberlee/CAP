@@ -225,11 +225,12 @@ class ContentGenerator:
 
         return processed, media_urls
 
-    def _process_videos(self, body: str, content_id: int, platform: str) -> tuple[str, list[str]]:
+    def _process_videos(self, body: str, content_id: int, platform: str, tags: list[str] | None = None) -> tuple[str, list[str]]:
         """Replace [VIDEO:description] placeholders with generated videos.
 
         For douyin: generates TTS audio from the script, uploads to DashScope OSS,
         then passes audio_url to the video model for voice-synced video.
+        Tags are passed as keywords for subtitle highlighting (CapCut Mate-style).
 
         Returns (processed_body, list_of_local_video_paths).
         """
@@ -243,16 +244,34 @@ class ContentGenerator:
         output_media = Path("output") / platform / "media"
         output_media.mkdir(parents=True, exist_ok=True)
 
-        # Generate TTS audio from script text (strip video placeholders first)
+        # Generate TTS audio from script text (strip video placeholders and markdown separators)
         audio_oss_url = None
+        audio_duration = None
+        script_text = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
+        script_text = re.sub(r"【[^】]+】", "", script_text)
+        script_text = re.sub(r"\n*---\n*", "，", script_text).strip()
+        script_text = re.sub(r"[，。]{2,}", "，", script_text)
+        subtitle_text = script_text
         if self.tts:
-            script_text = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
             audio_filename = f"content_{content_id}_tts.wav"
             # Video model max duration is 30s, leave 2s margin
             max_audio_duration = min(self.vgen.duration, 28) if self.vgen else 28
             logger.info("Generating TTS audio for script...")
-            audio_path = self.tts.synthesize(script_text, audio_filename, max_duration=max_audio_duration)
-            if audio_path:
+            tts_result = self.tts.synthesize(script_text, audio_filename, max_duration=max_audio_duration)
+            if tts_result:
+                audio_path, audio_duration, original_duration = tts_result
+                # Truncate subtitle text to match trimmed audio proportion
+                if original_duration > audio_duration and len(script_text) > 0:
+                    ratio = audio_duration / original_duration
+                    keep_chars = max(1, int(len(script_text) * ratio))
+                    # Try to break at a sentence boundary
+                    break_point = script_text.rfind("。", 0, keep_chars)
+                    if break_point < keep_chars // 2:
+                        break_point = script_text.rfind("，", 0, keep_chars)
+                    if break_point < keep_chars // 2:
+                        break_point = keep_chars
+                    subtitle_text = script_text[:break_point + 1].strip()
+                    logger.info(f"Subtitles truncated to match audio: {len(script_text)}->{len(subtitle_text)} chars ({ratio:.0%})")
                 # Copy audio to output dir
                 src_audio = Path(audio_path)
                 dst_audio = output_media / src_audio.name
@@ -277,7 +296,7 @@ class ContentGenerator:
             filename = f"content_{content_id}_{i+1}.mp4"
             logger.info(f"Generating video {i+1}/{len(placeholders_desc)}: {desc[:50]}...")
 
-            video_path = self.vgen.generate(desc, filename, audio_url=audio_oss_url)
+            video_path = self.vgen.generate(desc, filename, audio_url=audio_oss_url, subtitles=subtitle_text, keywords=tags, audio_duration=audio_duration)
             if video_path:
                 # Copy to output dir
                 src = Path(video_path)
@@ -327,7 +346,7 @@ class ContentGenerator:
 
             # Process inline videos (for douyin and other video-first platforms)
             if platform == "douyin":
-                body, video_urls = self._process_videos(body, content_id, platform)
+                body, video_urls = self._process_videos(body, content_id, platform, tags=tags)
                 media_urls.extend(video_urls)
 
             filepath = self.store.save_content(
