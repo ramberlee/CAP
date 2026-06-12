@@ -252,7 +252,11 @@ class ContentGenerator:
         script_text = re.sub(r"\n*---\n*", "，", script_text).strip()
         script_text = re.sub(r"[，。]{2,}", "，", script_text)
         subtitle_text = script_text
-        if self.tts:
+
+        # Determine if we should use TTS audio sync (only for DashScope backend)
+        use_audio_sync = self.tts and getattr(self.vgen, 'provider', 'dashscope') == 'dashscope'
+
+        if use_audio_sync:
             audio_filename = f"content_{content_id}_tts.wav"
             # Video model max duration is 30s, leave 2s margin
             max_audio_duration = min(self.vgen.duration, 28) if self.vgen else 28

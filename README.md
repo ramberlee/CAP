@@ -7,8 +7,8 @@
 - **热点采集** - 支持两类热点：「道」社会热点（今日头条）+「术」AI技术热点（36kr、Hacker News），支持分类采集
 - **道与术分类** - 社会热点归「道」、AI技术热点归「术」，自动生成不同定位的内容
 - **AI 内容生成** - 基于 MiMo 大模型，一键生成小红书、微信公众号、抖音三平台内容
-- **AI 配图生成** - 集成阿里云百炼 Qwen-Image，自动为文章生成配图
-- **抖音视频生成** - 口播脚本经 MiMo TTS 生成音频，再由 Wan2.7-T2V 生成带配音的短视频
+- **AI 配图生成** - 支持阿里云百炼 DashScope 和 ModelScope API 两种后端，自动为文章生成配图
+- **抖音视频生成** - 口播脚本经 MiMo TTS 生成音频，再由文生视频模型生成带配音的短视频（支持 DashScope / ModelScope）
 - **文件化存储** - 内容以 Markdown 文件保存在 `output/` 目录，可直接用编辑器修改
 - **微信公众号发布** - 支持草稿箱发布，内置 WeChat-Markdown 排版引擎，多主题切换
 - **小红书发布** - Playwright + CDP 浏览器自动化，自动上传图片、填写内容、Shadow DOM 穿透点击发布
@@ -36,8 +36,9 @@ CAP/
 │   ├── content_store.py         # 文件化内容存储
 │   ├── monitor.py               # 热点采集（道：今日头条，术：36kr+HN）
 │   ├── generator.py             # AI 内容生成（MiMo API）
-│   ├── imager.py                # AI 配图生成（DashScope SDK）
-│   ├── vgen.py                  # AI 视频生成（Wan2.7-T2V + TTS 配音）
+│   ├── imager.py                # AI 配图生成（DashScope / ModelScope）
+│   ├── vgen.py                  # AI 视频生成（DashScope / ModelScope + TTS 配音）
+│   ├── modelscope_client.py     # ModelScope API 统一客户端
 │   ├── tts.py                   # TTS 语音合成（MiMo TTS）
 │   ├── publisher.py             # 发布调度器
 │   └── platforms/
@@ -92,6 +93,12 @@ dashscope:
   video_model: "wan2.7-t2v-turbo"
   video_size: "1280*720"
   video_duration: 15
+
+# ModelScope API（可选，替代 DashScope 进行配图/视频生成）
+modelscope:
+  api_token: "your-modelscope-token"      # ModelScope Access Token
+  image_model: "wanx-community/wanx-v1"   # 文生图模型
+  video_model: "Wan-AI/Wan2.1-T2V-14B"   # 文生视频模型
 
 # 热点采集数据源
 monitor:
@@ -287,8 +294,9 @@ topic_id: 102
 | `modules.database` | SQLite 数据库层（话题增删改查、分类统计） |
 | `modules.monitor` | 热点采集（今日头条/36kr/Hacker News，道/术分类） |
 | `modules.generator` | AI 内容生成（MiMo API，分类模板和提示词） |
-| `modules.imager` | AI 配图生成（DashScope Qwen-Image） |
-| `modules.vgen` | AI 视频生成（Wan2.7-T2V，支持音频同步） |
+| `modules.imager` | AI 配图生成（DashScope / ModelScope 双后端） |
+| `modules.vgen` | AI 视频生成（DashScope / ModelScope 双后端，支持音频同步） |
+| `modules.modelscope_client` | ModelScope API 统一客户端 |
 | `modules.tts` | TTS 语音合成（MiMo TTS，口播脚本转音频） |
 | `modules.content_store` | 文件化内容存储（Markdown + YAML frontmatter） |
 | `modules.config` | 配置加载 |
@@ -297,8 +305,8 @@ topic_id: 102
 
 - **CLI**: Typer + Rich
 - **AI 内容生成**: MiMo API（OpenAI 兼容）
-- **AI 配图**: 阿里云百炼 DashScope SDK（Qwen-Image）
-- **AI 视频生成**: 阿里云百炼 Wan2.7-T2V（文生视频 + 音频同步）
+- **AI 配图**: 阿里云百炼 DashScope SDK / ModelScope API（可切换）
+- **AI 视频生成**: 阿里云百炼 Wan2.7-T2V / ModelScope API（可切换）
 - **TTS 语音合成**: MiMo TTS（OpenAI 兼容）
 - **Markdown 渲染**: markdown-it-py + BeautifulSoup4
 - **浏览器自动化**: Playwright + CDP（小红书发布，Shadow DOM 穿透）

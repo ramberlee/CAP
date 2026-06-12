@@ -1,4 +1,4 @@
-"""Video generation module using DashScope VideoSynthesis (Wan2.7-T2V)."""
+"""Video generation module with DashScope and ModelScope backends."""
 
 import logging
 import re
@@ -10,12 +10,17 @@ from pathlib import Path
 import requests
 import dashscope
 from dashscope import VideoSynthesis
+from modules.modelscope_client import ModelScopeClient
 
 logger = logging.getLogger(__name__)
 
 
 class VideoGenerator:
     def __init__(self, config: dict):
+        # Determine provider: "dashscope" (default) or "modelscope"
+        gen_config = config.get("generation", {})
+        self.provider = gen_config.get("video_provider", "dashscope")
+
         ds_config = config.get("dashscope", {})
         self.api_key = ds_config.get("api_key", "")
         self.model = ds_config.get("video_model", "wan2.7-t2v")
@@ -23,6 +28,13 @@ class VideoGenerator:
         self.duration = ds_config.get("video_duration", 15)
         self.media_dir = Path(ds_config.get("media_dir", "media"))
         self.media_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize provider-specific client
+        if self.provider == "modelscope":
+            self.ms_client = ModelScopeClient(config)
+            logger.info(f"VideoGenerator using ModelScope backend (model: {self.ms_client.video_model})")
+        else:
+            self.ms_client = None
 
         gen_config = config.get("generation", {})
         self.video_subtitles = gen_config.get("video_subtitles", True)
@@ -64,6 +76,10 @@ class VideoGenerator:
         Returns:
             Local file path of generated video, or None.
         """
+        if self.provider == "modelscope":
+            return self._generate_modelscope(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration)
+
+        # DashScope backend
         if not self.api_key:
             logger.warning("DashScope API key not configured, skipping video generation")
             return None
@@ -129,6 +145,30 @@ class VideoGenerator:
         except Exception as e:
             logger.error(f"Video generation failed: {e}")
             return None
+
+    def _generate_modelscope(self, prompt: str, filename: str, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None) -> str | None:
+        """Generate video using ModelScope API.
+
+        Args:
+            prompt: Text description for video generation.
+            filename: Output filename.
+            subtitles: Optional text to burn into the video as subtitles.
+            keywords: Optional list of keywords to highlight in subtitles.
+            audio_duration: Optional actual TTS audio duration in seconds for subtitle timing.
+
+        Returns:
+            Local file path of generated video, or None.
+        """
+        logger.info(f"Generating video via ModelScope: {prompt[:80]}...")
+        video_path = self.ms_client.generate_video(
+            prompt=prompt,
+            filename=filename,
+            size=self.size,
+            duration=self.duration,
+        )
+        if video_path:
+            return self._burn_subtitles(video_path, subtitles, keywords, audio_duration)
+        return None
 
     def _burn_subtitles(self, video_path: str | None, subtitle_text: str | None, keywords: list[str] | None = None, audio_duration: float | None = None) -> str | None:
         """Burn subtitles into video using ASS format (inspired by CapCut Mate).
