@@ -6,15 +6,6 @@ from modules.database import Database
 
 logger = logging.getLogger(__name__)
 
-# AI-related keywords for filtering Hacker News topics
-AI_KEYWORDS = [
-    "ai", "artificial intelligence", "llm", "gpt", "chatgpt", "openai",
-    "machine learning", "deep learning", "neural", "transformer", "diffusion",
-    "stable diffusion", "midjourney", "copilot", "gemini", "claude", "anthropic",
-    "langchain", "rag", "fine-tune", "fine tuning", "embedding", "vector",
-    "generative", "agi", "multimodal", "prompt", "agent", "mcp",
-]
-
 
 class TopicMonitor:
     def __init__(self, db: Database, config: dict):
@@ -51,89 +42,38 @@ class TopicMonitor:
 
     # ---- 术: AI tech hotspots ----
 
-    def fetch_36kr(self) -> list[dict]:
-        """Fetch AI/tech newsflash from 36kr (AI tech hotspots -> shu)."""
-        url = "https://36kr.com/api/newsflash"
-        logger.info("Fetching 36kr AI/tech news...")
+    def fetch_producthunt(self) -> list[dict]:
+        """Fetch AI-related products from Product Hunt RSS feed (AI tech hotspots -> shu)."""
+        import feedparser
+
+        url = "https://www.producthunt.com/feed"
+        logger.info("Fetching Product Hunt AI products...")
 
         try:
-            resp = requests.get(
-                url,
-                headers={"User-Agent": "Mozilla/5.0"},
-                params={"per_page": 50},
-                timeout=10,
-            )
-            data = resp.json()
+            feed = feedparser.parse(url)
             topics = []
-            for item in data.get("data", {}).get("items", []):
-                title = item.get("title", "").strip()
+            max_topics = self.config.get("max_topics", 10)
+
+            for entry in feed.entries:
+                if len(topics) >= max_topics:
+                    break
+                title = entry.get("title", "").strip()
                 if not title:
                     continue
-                # Filter for AI/tech related content
-                desc = item.get("description", "")
-                summary = item.get("summary", "")
-                text = f"{title} {desc} {summary}".lower()
-                if not any(kw in text for kw in AI_KEYWORDS):
-                    continue
+                summary = entry.get("summary", "")
+                text = f"{title} {summary}".lower()
                 topics.append({
-                    "source": "36kr",
+                    "source": "producthunt",
                     "title": title,
-                    "url": f"https://36kr.com/p/{item.get('id', '')}",
+                    "url": entry.get("link", ""),
                     "heat": 0,
                     "category": "shu",
                 })
-                if len(topics) >= self.config.get("max_topics", 10):
-                    break
-            logger.info(f"Fetched {len(topics)} AI topics from 36kr")
+
+            logger.info(f"Fetched {len(topics)} AI topics from Product Hunt")
             return topics
         except Exception as e:
-            logger.error(f"Failed to fetch 36kr topics: {e}")
-            return []
-
-    def fetch_hacker_news(self) -> list[dict]:
-        """Fetch AI-related top stories from Hacker News (AI tech hotspots -> shu)."""
-        logger.info("Fetching Hacker News AI topics...")
-
-        try:
-            # Get top story IDs
-            resp = requests.get(
-                "https://hacker-news.firebaseio.com/v0/topstories.json",
-                timeout=10,
-            )
-            story_ids = resp.json()[:100]  # Check top 100 stories
-
-            topics = []
-            for sid in story_ids:
-                if len(topics) >= self.config.get("max_topics", 10):
-                    break
-                try:
-                    item_resp = requests.get(
-                        f"https://hacker-news.firebaseio.com/v0/item/{sid}.json",
-                        timeout=5,
-                    )
-                    item = item_resp.json()
-                    if not item or item.get("type") != "story":
-                        continue
-
-                    title = item.get("title", "")
-                    text = title.lower()
-                    if not any(kw in text for kw in AI_KEYWORDS):
-                        continue
-
-                    topics.append({
-                        "source": "hackernews",
-                        "title": title,
-                        "url": item.get("url", f"https://news.ycombinator.com/item?id={sid}"),
-                        "heat": item.get("score", 0),
-                        "category": "shu",
-                    })
-                except Exception:
-                    continue
-
-            logger.info(f"Fetched {len(topics)} AI topics from Hacker News")
-            return topics
-        except Exception as e:
-            logger.error(f"Failed to fetch Hacker News topics: {e}")
+            logger.error(f"Failed to fetch Product Hunt topics: {e}")
             return []
 
     # ---- Manual & common ----
@@ -171,7 +111,7 @@ class TopicMonitor:
         sources = self.sources_config.get(category, [])
         if not sources:
             # Default sources if not configured
-            return ["toutiao"] if category == "dao" else ["36kr", "hackernews"]
+            return ["toutiao"] if category == "dao" else ["producthunt"]
         return sources
 
     def run(self, manual_topics: list[str] | None = None, category: str | None = None) -> int:
@@ -196,10 +136,8 @@ class TopicMonitor:
         # Collect shu (AI tech) hotspots
         if category is None or category == "shu":
             shu_sources = self._resolve_sources("shu")
-            if "36kr" in shu_sources:
-                all_topics.extend(self.fetch_36kr())
-            if "hackernews" in shu_sources:
-                all_topics.extend(self.fetch_hacker_news())
+            if "producthunt" in shu_sources:
+                all_topics.extend(self.fetch_producthunt())
 
         # Add manual topics (default to dao unless specified)
         if manual_topics:

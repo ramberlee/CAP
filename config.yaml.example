@@ -56,8 +56,7 @@ monitor:
       - toutiao              # 今日头条热榜
     # 术：AI技术热点数据源
     shu:
-      - 36kr                 # 36kr AI/科技快讯
-      - hackernews           # Hacker News AI相关话题
+      - producthunt          # Product Hunt AI产品精选 (feed?ai)
 
 # 发布平台配置
 platforms:
