@@ -232,3 +232,9 @@ config.yaml
 
 # playwright
 .playwright-mcp/*
+
+remotion/node_modules/*
+remotion/chrome/*
+remotion/chrome-win64/*
+chrome*
+.codegraph/*

@@ -246,20 +246,56 @@ class ContentGenerator:
 
         # Generate TTS audio from script text (strip video placeholders and markdown separators)
         audio_oss_url = None
+        src_audio = None
         audio_duration = None
         script_text = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
         script_text = re.sub(r"【[^】]+】", "", script_text)
         script_text = re.sub(r"\n*---\n*", "，", script_text).strip()
         script_text = re.sub(r"[，。]{2,}", "，", script_text)
         subtitle_text = script_text
+        video_plan = None  # For remotion: pre-generated plan
 
-        # Determine if we should use TTS audio sync (only for DashScope backend)
-        use_audio_sync = self.tts and getattr(self.vgen, 'provider', 'dashscope') == 'dashscope'
+        # Determine if we should use TTS audio sync
+        is_remotion = getattr(self.vgen, 'provider', 'dashscope') == 'remotion'
+
+        # --- Remotion flow: plan first, then TTS from plan ---
+        if is_remotion and self.vgen and self.vgen.planner:
+            logger.info("Generating video composition plan first (Remotion)...")
+            # Get the topic title — strip placeholders and markers
+            topic_title = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
+            topic_title = re.sub(r"【[^】]+】", "", topic_title)
+            topic_title = topic_title.split("\n")[0].strip()[:50]
+            if not topic_title:
+                topic_title = "AI 资讯"
+            video_plan = self.vgen.planner.plan(
+                script=script_text,
+                title=topic_title,
+                tags=tags,
+                total_duration=None,  # LLM decides duration (~25-30s)
+            )
+            if video_plan:
+                # Extract audio script from the plan
+                audio_script = self.vgen.planner.get_audio_script(video_plan)
+                logger.info(f"Video plan generated: {len(video_plan.get('scenes', []))} scenes, "
+                           f"audio script: {audio_script[:60]}...")
+                # Use the plan's audio script for TTS (instead of raw douyin script)
+                if audio_script:
+                    script_text = audio_script
+                    subtitle_text = audio_script
+            else:
+                logger.warning("Plan generation failed, falling back to raw script for TTS")
+
+        use_audio_sync = self.tts and (
+            is_remotion or getattr(self.vgen, 'provider', 'dashscope') == 'dashscope'
+        )
 
         if use_audio_sync:
             audio_filename = f"content_{content_id}_tts.wav"
-            # Video model max duration is 30s, leave 2s margin
-            max_audio_duration = min(self.vgen.duration, 28) if self.vgen else 28
+            # For Remotion, videos are ~30s so allow longer TTS
+            if is_remotion:
+                max_audio_duration = 35  # 30s video + 5s margin
+            else:
+                max_audio_duration = min(self.vgen.duration, 28) if self.vgen else 28
             logger.info("Generating TTS audio for script...")
             tts_result = self.tts.synthesize(script_text, audio_filename, max_duration=max_audio_duration)
             if tts_result:
@@ -268,21 +304,28 @@ class ContentGenerator:
                 if original_duration > audio_duration and len(script_text) > 0:
                     ratio = audio_duration / original_duration
                     keep_chars = max(1, int(len(script_text) * ratio))
-                    # Try to break at a sentence boundary
                     break_point = script_text.rfind("。", 0, keep_chars)
                     if break_point < keep_chars // 2:
                         break_point = script_text.rfind("，", 0, keep_chars)
                     if break_point < keep_chars // 2:
                         break_point = keep_chars
                     subtitle_text = script_text[:break_point + 1].strip()
-                    logger.info(f"Subtitles truncated to match audio: {len(script_text)}->{len(subtitle_text)} chars ({ratio:.0%})")
+                    logger.info(f"TTS trimmed: {original_duration:.1f}s -> {audio_duration:.1f}s, "
+                               f"text: {len(script_text)} -> {len(subtitle_text)} chars")
                 # Copy audio to output dir
                 src_audio = Path(audio_path)
                 dst_audio = output_media / src_audio.name
                 shutil.copy2(src_audio, dst_audio)
 
-                # Upload to DashScope OSS for video model
-                audio_oss_url = self._upload_to_oss(str(src_audio), self.vgen.model)
+                # For Remotion: normalize plan durations to match actual TTS audio duration
+                if is_remotion and video_plan and self.vgen and self.vgen.planner:
+                    self.vgen.planner._normalize_durations(video_plan, audio_duration)
+                    plan_dur = sum(s.get("duration", 3) for s in video_plan.get("scenes", []))
+                    logger.info(f"Plan durations normalized to audio: {plan_dur:.1f}s")
+
+                # Upload to DashScope OSS for video model (remotion skips this)
+                if not is_remotion:
+                    audio_oss_url = self._upload_to_oss(str(src_audio), self.vgen.model)
 
         media_urls = []
         processed = body
@@ -300,7 +343,21 @@ class ContentGenerator:
             filename = f"content_{content_id}_{i+1}.mp4"
             logger.info(f"Generating video {i+1}/{len(placeholders_desc)}: {desc[:50]}...")
 
-            video_path = self.vgen.generate(desc, filename, audio_url=audio_oss_url, subtitles=subtitle_text, keywords=tags, audio_duration=audio_duration)
+            # For Remotion: pass local audio path + pre-made plan
+            # For DashScope: pass OSS URL
+            if is_remotion:
+                audio_url_arg = str(src_audio) if src_audio else None
+            else:
+                audio_url_arg = audio_oss_url
+
+            video_path = self.vgen.generate(
+                desc, filename,
+                audio_url=audio_url_arg,
+                subtitles=subtitle_text,
+                keywords=tags,
+                audio_duration=audio_duration,
+                plan=video_plan if is_remotion else None,
+            )
             if video_path:
                 # Copy to output dir
                 src = Path(video_path)

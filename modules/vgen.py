@@ -1,6 +1,8 @@
-"""Video generation module with DashScope and ModelScope backends."""
+"""Video generation module with DashScope, ModelScope and Remotion backends."""
 
+import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -11,13 +13,14 @@ import requests
 import dashscope
 from dashscope import VideoSynthesis
 from modules.modelscope_client import ModelScopeClient
+from modules.video_planner import VideoPlanner
 
 logger = logging.getLogger(__name__)
 
 
 class VideoGenerator:
     def __init__(self, config: dict):
-        # Determine provider: "dashscope" (default) or "modelscope"
+        # Determine provider: "dashscope" (default), "modelscope", or "remotion"
         gen_config = config.get("generation", {})
         self.provider = gen_config.get("video_provider", "dashscope")
 
@@ -29,12 +32,31 @@ class VideoGenerator:
         self.media_dir = Path(ds_config.get("media_dir", "media"))
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
+        # Remotion-specific config
+        remotion_config = config.get("remotion", {})
+        self.remotion_project_dir = Path(remotion_config.get("project_dir", "remotion"))
+        self.remotion_fps = remotion_config.get("fps", 30)
+        self.remotion_browser_executable = remotion_config.get("browser_executable", None)
+        # Resolve relative paths to absolute (paths in config are relative to project root)
+        if self.remotion_browser_executable and not os.path.isabs(self.remotion_browser_executable):
+            self.remotion_browser_executable = os.path.abspath(self.remotion_browser_executable)
+        self.remotion_chrome_flags = remotion_config.get("chrome_flags", "")
+
+        # Find npx executable (needed because Python subprocess may not inherit Node.js PATH)
+        self._npx_path = self._find_npx()
+
+        # Find ffmpeg executable (needed for audio merging)
+        self._ffmpeg_path = self._find_ffmpeg()
+
         # Initialize provider-specific client
         if self.provider == "modelscope":
             self.ms_client = ModelScopeClient(config)
             logger.info(f"VideoGenerator using ModelScope backend (model: {self.ms_client.video_model})")
         else:
             self.ms_client = None
+
+        # Video planner (used by remotion provider)
+        self.planner = VideoPlanner(config) if self.provider == "remotion" else None
 
         gen_config = config.get("generation", {})
         self.video_subtitles = gen_config.get("video_subtitles", True)
@@ -62,20 +84,87 @@ class VideoGenerator:
 
         dashscope.api_key = self.api_key
 
-    def generate(self, prompt: str, filename: str, audio_url: str | None = None, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None) -> str | None:
+    def _find_ffmpeg(self) -> str:
+        """Locate the ffmpeg executable for audio merging."""
+        # Try shutil.which first (respects PATH)
+        found = shutil.which("ffmpeg")
+        if found:
+            return found
+        # Windows: also try ffmpeg.exe
+        found = shutil.which("ffmpeg.exe")
+        if found:
+            return found
+        # Search PATH directories manually (in case shutil.which misbehaves)
+        for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+            for name in ("ffmpeg.exe", "ffmpeg"):
+                p = os.path.join(path_dir, name)
+                if os.path.isfile(p):
+                    return p
+        # Search common installation paths
+        candidates = [
+            os.path.expanduser("~/bin/ffmpeg.exe"),
+            os.path.expanduser("~/bin/ffmpeg"),
+            r"C:\ffmpeg\bin\ffmpeg.exe",
+            r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+            r"C:\tools\ffmpeg\bin\ffmpeg.exe",
+        ]
+        for p in candidates:
+            if os.path.isfile(p):
+                return p
+        # Last resort: hope it's in PATH at runtime (may fail)
+        logger.warning("ffmpeg not found in PATH or common locations. "
+                      "Install ffmpeg from https://ffmpeg.org/download.html")
+        return "ffmpeg"
+
+    def _find_npx(self) -> str:
+        """Locate the npx executable for running Remotion CLI."""
+        # Check common Node.js installation paths
+        candidates = [
+            "npx",  # hope it's in PATH
+            r"C:\Program Files\nodejs\npx.cmd",
+            r"C:\Program Files (x86)\nodejs\npx.cmd",
+            os.path.expanduser(r"~\AppData\Roaming\npm\npx.cmd"),
+            os.path.expanduser(r"~\AppData\Local\npm\npx.cmd"),
+            # nvm-windows paths
+            r"E:\nvm4w\nodejs\npx.cmd",
+            os.path.expanduser(r"~\AppData\Local\nvm\npx.cmd"),
+        ]
+        for candidate in candidates:
+            try:
+                result = subprocess.run([candidate, "--version"], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    logger.debug(f"Found npx: {candidate}")
+                    return candidate
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
+        logger.warning("npx not found. Install Node.js from https://nodejs.org")
+        return "npx"  # fallback, will likely fail later
+
+    def generate(self, prompt: str, filename: str, audio_url: str | None = None, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None, plan: dict | None = None) -> str | None:
         """Generate a video from a text prompt, optionally with synced audio.
 
         Args:
             prompt: Text description for video generation.
             filename: Output filename.
-            audio_url: Optional OSS URL of TTS audio for voice-synced video.
+            audio_url: Optional OSS URL of TTS audio (DashScope) or local path (Remotion).
             subtitles: Optional text to burn into the video as subtitles.
             keywords: Optional list of keywords to highlight in subtitles.
             audio_duration: Optional actual TTS audio duration in seconds for subtitle timing.
+            plan: Optional pre-generated video composition plan (used by Remotion).
 
         Returns:
             Local file path of generated video, or None.
         """
+        if self.provider == "remotion":
+            return self._generate_remotion(
+                script=prompt,
+                filename=filename,
+                audio_path=audio_url,
+                keywords=keywords,
+                audio_duration=audio_duration,
+                plan=plan,
+            )
+
         if self.provider == "modelscope":
             return self._generate_modelscope(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration)
 
@@ -447,3 +536,256 @@ class VideoGenerator:
         except Exception as e:
             logger.error(f"Video download failed: {e}")
             return None
+
+    def _generate_remotion(
+        self,
+        script: str,
+        filename: str,
+        audio_path: str | None = None,
+        keywords: list[str] | None = None,
+        audio_duration: float | None = None,
+        plan: dict | None = None,
+    ) -> str | None:
+        """Generate video using Remotion (programmatic text-based video).
+
+        If a pre-made plan is provided, uses it directly.
+        Otherwise, the LLM generates a composition plan from the script.
+        After rendering, audio is merged via ffmpeg.
+
+        Args:
+            script: The douyin oral script text.
+            filename: Output filename.
+            audio_path: Optional local path to TTS audio file to embed.
+            keywords: Optional tags/keywords for content context.
+            audio_duration: Target audio duration (used if plan not provided).
+            plan: Optional pre-generated video composition plan.
+        """
+
+        # Step 1: Get or generate composition plan
+        if plan:
+            logger.info(f"Using pre-generated video plan: {len(plan.get('scenes', []))} scenes")
+        else:
+            duration = audio_duration or self.duration
+            plan = self.planner.plan(
+                script=script,
+                title=filename.replace(".mp4", "").replace("_", " ").title(),
+                tags=keywords,
+                total_duration=duration,
+            )
+            if not plan:
+                logger.error("Failed to generate video composition plan")
+                return None
+
+        # Calculate actual video duration from plan scenes
+        plan_duration = sum(s.get("duration", 3) for s in plan.get("scenes", []))
+
+        # Step 2: Write plan to input.json for Remotion
+        remotion_dir = Path(self.remotion_project_dir)
+        if not remotion_dir.exists():
+            logger.error(f"Remotion project directory not found: {remotion_dir}")
+            return None
+
+        # Ensure video is at least as long as audio (extend last scene if needed)
+        if audio_duration and plan_duration < audio_duration - 0.5:
+            gap = audio_duration - plan_duration
+            if plan.get("scenes"):
+                plan["scenes"][-1]["duration"] += gap
+                logger.info(f"Extended last scene by {gap:.1f}s to match audio duration")
+                plan_duration = audio_duration
+
+        input_json_path = remotion_dir / "input.json"
+        try:
+            input_json_path.write_text(
+                json.dumps({"plan": plan}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            logger.info(f"Composition plan written to {input_json_path}")
+        except Exception as e:
+            logger.error(f"Failed to write input.json: {e}")
+            return None
+
+        # Step 3: Render video using Remotion CLI
+        output_path = Path(self.media_dir).resolve() / filename
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            logger.info("Rendering video with Remotion...")
+
+            # Build command
+            cmd = [
+                self._npx_path,
+                "remotion",
+                "render",
+                "src/Root.tsx",
+                "CAPVideo",
+                str(output_path),
+                "--props=./input.json",
+                "--overwrite",
+            ]
+
+            # Add optional browser executable
+            if self.remotion_browser_executable:
+                cmd.extend(["--browser-executable", self.remotion_browser_executable])
+
+            # Add optional chrome flags
+            if self.remotion_chrome_flags:
+                cmd.extend(["--chrome-flags", self.remotion_chrome_flags])
+
+            result = subprocess.run(
+                cmd,
+                cwd=str(remotion_dir),
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 min timeout
+            )
+
+            if result.returncode != 0:
+                logger.error(f"Remotion render failed:\n{result.stderr}")
+                return None
+
+            if output_path.exists():
+                logger.info(f"Video rendered: {output_path}")
+                return self._merge_audio(output_path, audio_path, plan_duration)
+
+            # Try to find the output in the remotion project directory
+            alt_path = Path(self.remotion_project_dir).resolve() / "out" / filename
+            if alt_path.exists():
+                logger.info(f"Video rendered (alt path): {alt_path}")
+                import shutil
+                shutil.copy2(str(alt_path), str(output_path))
+                return self._merge_audio(output_path, audio_path, plan_duration)
+
+            logger.error("Remotion render completed but output not found")
+            return None
+
+        except subprocess.TimeoutExpired:
+            logger.error("Remotion render timed out (5 min)")
+            return None
+        except FileNotFoundError:
+            logger.error(
+                "npx/remotion not found. Ensure Node.js is installed "
+                "and 'npm install' has been run in the remotion/ directory."
+            )
+            return None
+        except Exception as e:
+            logger.error(f"Remotion render failed: {e}")
+            return None
+
+    def _merge_audio(self, video_path: str | Path, audio_path: str | None, trim_duration: float | None = None) -> str | None:
+        """Merge audio into a video file using ffmpeg.
+
+        If no audio path is provided, returns the video path unchanged.
+        The original video file is replaced by the audio-merged version.
+
+        Args:
+            video_path: Path to the rendered video file.
+            audio_path: Optional local path to audio file to embed.
+            trim_duration: If set, trim video to this exact duration (seconds)
+                           before merging audio, to remove excess frames from
+                           Remotion's fixed-duration composition.
+        """
+        if not audio_path or not Path(audio_path).exists():
+            logger.info(f"No audio to merge: path={audio_path}, exists={Path(audio_path).exists() if audio_path else 'N/A'}")
+            return str(video_path)
+
+        # Check ffmpeg executable
+        if not shutil.which(self._ffmpeg_path) and not os.path.isfile(self._ffmpeg_path):
+            logger.warning(f"ffmpeg not found at '{self._ffmpeg_path}', skipping audio merge")
+            return str(video_path)
+
+        video_path = Path(video_path)
+        temp_output = video_path.with_name(f"{video_path.stem}_with_audio.mp4")
+
+        try:
+            # Step 1: Trim video to exact duration if needed
+            working_video = video_path
+            if trim_duration and trim_duration > 0:
+                trimmed = video_path.with_name(f"{video_path.stem}_trimmed.mp4")
+                subprocess.run(
+                    [self._ffmpeg_path, "-y",
+                     "-i", str(video_path),
+                     "-t", f"{trim_duration:.2f}",
+                     "-c", "copy",
+                     str(trimmed)],
+                    check=True, capture_output=True, text=True, timeout=30,
+                )
+                working_video = trimmed
+            # Probe audio duration
+            audio_dur = 0
+            try:
+                probe = subprocess.run(
+                    [self._ffmpeg_path, "-i", str(audio_path), "-f", "null", "-"],
+                    capture_output=True, text=True, timeout=10
+                )
+                for line in probe.stderr.split('\n'):
+                    if 'Duration' in line:
+                        parts = line.strip().split(',')[0].split('Duration:')[1].strip()
+                        h, m, s = parts.split(':')
+                        audio_dur = int(h)*3600 + int(m)*60 + float(s)
+            except Exception:
+                pass
+
+            cmd = [
+                self._ffmpeg_path,
+                "-y",
+                "-i", str(working_video),
+                "-i", str(audio_path),
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-map", "0:v:0",
+                "-map", "1:a:0",
+            ]
+
+            # If audio is shorter than video, pad with silence so audio isn't cut
+            if audio_dur > 0:
+                # Get video duration via ffprobe
+                video_dur = 0
+                try:
+                    probe_v = subprocess.run(
+                        [self._ffmpeg_path, "-i", str(working_video), "-f", "null", "-"],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    for line in probe_v.stderr.split('\n'):
+                        if 'Duration' in line:
+                            parts = line.strip().split(',')[0].split('Duration:')[1].strip()
+                            h, m, s = parts.split(':')
+                            video_dur = int(h)*3600 + int(m)*60 + float(s)
+                except Exception:
+                    pass
+
+                if video_dur > audio_dur + 0.5:
+                    # Pad audio with silence to match video
+                    pad_dur = video_dur - audio_dur
+                    cmd.extend(["-af", f"apad=pad_dur={pad_dur:.1f}"])
+                else:
+                    # Video is shorter or equal - use shortest to avoid frozen frames
+                    cmd.append("-shortest")
+            else:
+                cmd.append("-shortest")
+
+            cmd.append(str(temp_output))
+
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            temp_output.replace(video_path)
+            # Clean up trimmed temp file
+            if working_video != video_path:
+                working_video.unlink(missing_ok=True)
+            logger.info(f"Audio merged: {video_path}")
+            return str(video_path)
+        except subprocess.TimeoutExpired:
+            logger.warning("Audio merge timed out, returning video without audio")
+            return str(video_path)
+        except FileNotFoundError as e:
+            logger.warning(f"Audio merge: file not found ({e}). "
+                          f"ffmpeg={self._ffmpeg_path}, "
+                          f"video={working_video}, audio={audio_path}")
+            return str(video_path)
+        except Exception as e:
+            logger.warning(f"Audio merge failed: {e}, returning video without audio")
+            return str(video_path)

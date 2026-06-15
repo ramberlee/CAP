@@ -1,0 +1,60 @@
+{
+  "plan": {
+    "title": "想不想用3行代码，搭一个能学习的‘AI大脑’？",
+    "theme": "dark_tech",
+    "scenes": [
+      {
+        "type": "title",
+        "text": "想不想用3行代码，搭一个能学习的‘AI大脑’？",
+        "duration": 3.0,
+        "animation": "scale_in"
+      },
+      {
+        "type": "text_sequence",
+        "lines": [
+          "想不想用3行代码，搭一个能学习的‘AI大脑’"
+        ],
+        "duration": 4.2,
+        "animation": "fade_in"
+      },
+      {
+        "type": "text_sequence",
+        "lines": [
+          "，今天教你用Python实现最简单的神经网络——感知机"
+        ],
+        "duration": 4.2,
+        "animation": "fade_in"
+      },
+      {
+        "type": "text_sequence",
+        "lines": [
+          "用NumPy库定义权重和偏置，模拟一个神经元如何根据输入做出判断"
+        ],
+        "duration": 4.2,
+        "animation": "fade_in"
+      },
+      {
+        "type": "text_sequence",
+        "lines": [
+          "跟着做一遍，你就懂了AI决策的底层逻辑，想看完整代码"
+        ],
+        "duration": 4.2,
+        "animation": "fade_in"
+      },
+      {
+        "type": "text_sequence",
+        "lines": [
+          "关注我，从最小的‘大脑’开始，一步步构建你的AI"
+        ],
+        "duration": 4.2,
+        "animation": "fade_in"
+      },
+      {
+        "type": "ending",
+        "text": "关注我\n获取更多 AI 资讯",
+        "duration": 2.7,
+        "animation": "fade_out"
+      }
+    ]
+  }
+}
