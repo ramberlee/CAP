@@ -225,29 +225,214 @@ class ContentGenerator:
 
         return processed, media_urls
 
-    def _process_videos(self, body: str, content_id: int, platform: str, tags: list[str] | None = None) -> tuple[str, list[str]]:
-        """Replace [VIDEO:description] placeholders with generated videos.
+    def _generate_voice_prompt(self, script_text: str, category: str = "dao") -> str | None:
+        """Generate a TTS voice prompt dynamically based on script content.
 
-        For douyin: generates TTS audio from the script, uploads to DashScope OSS,
-        then passes audio_url to the video model for voice-synced video.
-        Tags are passed as keywords for subtitle highlighting (CapCut Mate-style).
+        Uses LLM to analyze the script's tone, emotion, and style, then generates
+        an appropriate voice instruction for the TTS engine.
+
+        Args:
+            script_text: The cleaned script text.
+            category: Content category ('dao' or 'shu').
+
+        Returns:
+            Voice prompt string, or None on failure.
+        """
+        system_prompt = (
+            "你是一个语音导演。根据下面的口播文案，生成一句简短的 TTS 语音指令（20字以内），"
+            "告诉语音合成系统应该用什么语气、节奏、情绪来朗读。\n\n"
+            "要求：\n"
+            "1. 只输出指令本身，不要解释\n"
+            "2. 指令要具体，如：'用激动、快节奏的语气朗读，像科技新闻主播'\n"
+            "3. 根据文案内容调整：震撼新闻用激动语气，深度分析用沉稳语气，技术干货用专业自信语气\n"
+            "4. 必须包含情绪词和风格描述"
+        )
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=100,
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"口播文案：\n{script_text[:300]}"},
+                ],
+            )
+            prompt = response.choices[0].message.content.strip()
+            # Clean up: remove quotes, markdown, etc.
+            prompt = prompt.strip('"\'`').strip()
+            if prompt:
+                logger.info(f"Generated voice prompt: {prompt}")
+                return prompt
+            return None
+        except Exception as e:
+            logger.warning(f"Voice prompt generation failed: {e}")
+            return None
+
+    def _generate_tts_per_scene(self, plan: dict, content_id: int, output_media: Path, max_total_duration: float = 60, voice_prompt: str | None = None) -> tuple[str | None, float | None, list[dict]]:
+        """Generate TTS audio per-scene for precise synchronization.
+
+        Instead of one big TTS call, generates audio for each scene individually,
+        measures actual duration, then concatenates. Returns timing data that
+        matches the real speech rhythm.
+
+        Args:
+            plan: Composition plan with scenes (each scene has text/lines/items).
+            content_id: Content ID for filename generation.
+            output_media: Output directory for audio files.
+            max_total_duration: Maximum total audio duration.
+            voice_prompt: Optional voice prompt for T tone consistency.
+
+        Returns:
+            (audio_path, total_duration, scene_timings) where scene_timings is a list of
+            dicts with keys: text, start, end (in seconds).
+        """
+        if not self.tts or not plan.get("scenes"):
+            return None, None, []
+
+        scenes = plan["scenes"]
+        scene_audio_paths = []
+        scene_durations = []
+        scene_texts = []
+
+        # Generate TTS for each scene
+        for i, scene in enumerate(scenes):
+            # Extract speakable text from scene
+            scene_text = self._extract_scene_text(scene)
+            if not scene_text:
+                scene_durations.append(0.0)
+                scene_texts.append("")
+                continue
+
+            audio_filename = f"content_{content_id}_scene_{i}.wav"
+            tts_result = self.tts.synthesize(scene_text, audio_filename, max_duration=max_total_duration, voice_prompt=voice_prompt)
+            if tts_result:
+                audio_path, duration, _ = tts_result
+                scene_audio_paths.append(audio_path)
+                scene_durations.append(duration)
+                scene_texts.append(scene_text)
+            else:
+                scene_durations.append(0.0)
+                scene_texts.append(scene_text)
+
+        if not scene_audio_paths:
+            return None, None, []
+
+        # Concatenate all scene audio files
+        concat_filename = f"content_{content_id}_tts.wav"
+        concat_path = str(output_media / concat_filename)
+        from modules.tts import TTSSynthesizer
+        TTSSynthesizer.concat_wav_files(scene_audio_paths, concat_path, gap_seconds=0.15)
+
+        # Build timing data
+        scene_timings = []
+        current_time = 0.0
+        gap = 0.15
+        for i, (duration, text) in enumerate(zip(scene_durations, scene_texts)):
+            if duration > 0:
+                start = current_time
+                end = current_time + duration
+                scene_timings.append({"text": text, "start": round(start, 2), "end": round(end, 2)})
+                current_time = end + gap  # gap between scenes
+            else:
+                scene_timings.append({"text": text, "start": round(current_time, 2), "end": round(current_time, 2)})
+
+        total_duration = TTSSynthesizer.get_audio_duration(concat_path)
+        logger.info(f"Per-scene TTS: {len(scene_audio_paths)} scenes, {total_duration:.1f}s total")
+        return concat_path, total_duration, scene_timings
+
+    def _extract_scene_text(self, scene: dict) -> str:
+        """Extract speakable text from a composition plan scene."""
+        scene_type = scene.get("type", "")
+
+        if scene_type == "title":
+            return scene.get("text", "")
+        elif scene_type == "text_sequence":
+            lines = scene.get("lines", [])
+            return "，".join(line for line in lines if line)
+        elif scene_type == "highlight":
+            return scene.get("text", "")
+        elif scene_type == "bullet_points":
+            items = scene.get("items", [])
+            return "，".join(item for item in items if item)
+        elif scene_type == "ending":
+            return scene.get("text", "").replace("\n", "。")
+        return ""
+
+    def _generate_video_description(self, script_text: str, title: str, category: str = "dao") -> str | None:
+        """Generate a text-to-video prompt from an oral script using the video template.
+
+        Uses a dedicated video prompt template (douyin_video.md / douyin_video_dao.md / douyin_video_shu.md)
+        to create a cinematic description optimized for AI video generation models.
+
+        Args:
+            script_text: The oral script text (cleaned, no markers).
+            title: The content title.
+            category: Content category ('dao' or 'shu').
+
+        Returns:
+            Video description string, or None on failure.
+        """
+        # Load video-specific template
+        try:
+            template = self._load_template("douyin_video", category)
+        except FileNotFoundError:
+            logger.warning(f"Video template not found for category '{category}', using fallback")
+            template = None
+
+        if not template:
+            return None
+
+        prompt = template.replace("{script}", script_text).replace("{title}", title)
+        system_prompt = CATEGORY_SYSTEM_PROMPTS.get(category, CATEGORY_SYSTEM_PROMPTS["dao"])
+
+        try:
+            logger.info("Generating video description via LLM (text-to-video template)...")
+            response = self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=1024,
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            text = response.choices[0].message.content.strip()
+
+            # Extract JSON and parse video_prompt
+            json_start = text.find("{")
+            json_end = text.rfind("}") + 1
+            if json_start >= 0 and json_end > json_start:
+                result = json.loads(text[json_start:json_end])
+                video_prompt = result.get("video_prompt", "")
+                if video_prompt:
+                    logger.info(f"Video description generated: {video_prompt[:60]}...")
+                    return video_prompt
+
+            logger.warning(f"No video_prompt found in LLM response: {text[:200]}")
+            return None
+        except Exception as e:
+            logger.error(f"Video description generation failed: {e}")
+            return None
+
+    def _process_videos(self, body: str, content_id: int, platform: str, tags: list[str] | None = None, category: str = "dao") -> tuple[str, list[str]]:
+        """Generate videos for douyin content.
+
+        Two paths based on video provider:
+        - Remotion: uses script text directly with video_planner → text-based animation
+        - Text-to-video (DashScope/ModelScope/Agnes): generates cinematic video description
+          via dedicated video template, then calls the video generation API
 
         Returns (processed_body, list_of_local_video_paths).
         """
         if not self.vgen:
-            # No video generator, just strip placeholders
-            return VIDEO_PLACEHOLDER_RE.sub("", body), []
-
-        placeholders = list(VIDEO_PLACEHOLDER_RE.finditer(body))
+            return body, []
 
         # Prepare output media dir for this platform
         output_media = Path("output") / platform / "media"
         output_media.mkdir(parents=True, exist_ok=True)
 
-        # Generate TTS audio from script text (strip video placeholders and markdown separators)
-        audio_oss_url = None
-        src_audio = None
-        audio_duration = None
+        # Extract clean script text (strip markers and separators)
         script_text = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
         script_text = re.sub(r"【[^】]+】", "", script_text)
         script_text = re.sub(r"\n*---\n*", "，", script_text).strip()
@@ -255,18 +440,17 @@ class ContentGenerator:
         subtitle_text = script_text
         video_plan = None  # For remotion: pre-generated plan
 
-        # Determine if we should use TTS audio sync
+        # Extract title from body
+        topic_title = re.sub(r"【[^】]+】", "", body).strip()
+        topic_title = topic_title.split("\n")[0].strip()[:50]
+        if not topic_title:
+            topic_title = "AI 资讯"
+
         is_remotion = getattr(self.vgen, 'provider', 'dashscope') == 'remotion'
 
         # --- Remotion flow: plan first, then TTS from plan ---
         if is_remotion and self.vgen and self.vgen.planner:
-            logger.info("Generating video composition plan first (Remotion)...")
-            # Get the topic title — strip placeholders and markers
-            topic_title = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
-            topic_title = re.sub(r"【[^】]+】", "", topic_title)
-            topic_title = topic_title.split("\n")[0].strip()[:50]
-            if not topic_title:
-                topic_title = "AI 资讯"
+            logger.info("Generating video composition plan (Remotion)...")
             video_plan = self.vgen.planner.plan(
                 script=script_text,
                 title=topic_title,
@@ -274,104 +458,182 @@ class ContentGenerator:
                 total_duration=None,  # LLM decides duration (~25-30s)
             )
             if video_plan:
-                # Extract audio script from the plan
                 audio_script = self.vgen.planner.get_audio_script(video_plan)
-                logger.info(f"Video plan generated: {len(video_plan.get('scenes', []))} scenes, "
-                           f"audio script: {audio_script[:60]}...")
-                # Use the plan's audio script for TTS (instead of raw douyin script)
+                logger.info(f"Video plan: {len(video_plan.get('scenes', []))} scenes, "
+                           f"audio: {audio_script[:60]}...")
                 if audio_script:
                     script_text = audio_script
                     subtitle_text = audio_script
             else:
                 logger.warning("Plan generation failed, falling back to raw script for TTS")
 
-        use_audio_sync = self.tts and (
-            is_remotion or getattr(self.vgen, 'provider', 'dashscope') == 'dashscope'
-        )
+        # --- TTS audio generation ---
+        audio_oss_url = None
+        src_audio = None
+        audio_duration = None
+        scene_timings = []  # Per-scene timing for precise sync
+        use_audio_sync = self.tts is not None
 
         if use_audio_sync:
-            audio_filename = f"content_{content_id}_tts.wav"
-            # For Remotion, videos are ~30s so allow longer TTS
-            if is_remotion:
-                max_audio_duration = 35  # 30s video + 5s margin
+            # Generate voice prompt dynamically based on content
+            voice_prompt = self._generate_voice_prompt(script_text, category)
+
+            if is_remotion and video_plan and video_plan.get("scenes"):
+                # --- Remotion: per-scene TTS for precise sync ---
+                logger.info("Generating per-scene TTS for precise audio/video sync...")
+                concat_path, total_duration, scene_timings = self._generate_tts_per_scene(
+                    video_plan, content_id, output_media, max_total_duration=60, voice_prompt=voice_prompt
+                )
+                if concat_path and total_duration:
+                    audio_path = concat_path
+                    audio_duration = total_duration
+                    src_audio = Path(audio_path)
+                    dst_audio = output_media / src_audio.name
+                    shutil.copy2(src_audio, dst_audio)
+
+                    # Update plan scene durations with measured TTS durations.
+                    # Do NOT normalize — per-scene TTS durations are the ground truth.
+                    # The small gap between scenes (~0.15s each) will be handled by
+                    # _merge_audio's extend-last-scene logic.
+                    for i, timing in enumerate(scene_timings):
+                        if i < len(video_plan["scenes"]) and timing["end"] > timing["start"]:
+                            video_plan["scenes"][i]["duration"] = round(timing["end"] - timing["start"], 2)
+
+                    plan_dur = sum(s.get("duration", 0) for s in video_plan["scenes"])
+                    logger.info(f"Plan durations from TTS: {plan_dur:.1f}s (audio: {audio_duration:.1f}s, "
+                               f"gap from {len(scene_timings)} scene pauses)")
             else:
-                max_audio_duration = min(self.vgen.duration, 28) if self.vgen else 28
-            logger.info("Generating TTS audio for script...")
-            tts_result = self.tts.synthesize(script_text, audio_filename, max_duration=max_audio_duration)
-            if tts_result:
-                audio_path, audio_duration, original_duration = tts_result
-                # Truncate subtitle text to match trimmed audio proportion
-                if original_duration > audio_duration and len(script_text) > 0:
-                    ratio = audio_duration / original_duration
-                    keep_chars = max(1, int(len(script_text) * ratio))
-                    break_point = script_text.rfind("。", 0, keep_chars)
-                    if break_point < keep_chars // 2:
-                        break_point = script_text.rfind("，", 0, keep_chars)
-                    if break_point < keep_chars // 2:
-                        break_point = keep_chars
-                    subtitle_text = script_text[:break_point + 1].strip()
-                    logger.info(f"TTS trimmed: {original_duration:.1f}s -> {audio_duration:.1f}s, "
-                               f"text: {len(script_text)} -> {len(subtitle_text)} chars")
-                # Copy audio to output dir
-                src_audio = Path(audio_path)
-                dst_audio = output_media / src_audio.name
-                shutil.copy2(src_audio, dst_audio)
+                # --- Text-to-video: full TTS (audio is source of truth) ---
+                audio_filename = f"content_{content_id}_tts.wav"
+                logger.info("Generating TTS audio for script (no duration limit)...")
+                tts_result = self.tts.synthesize(script_text, audio_filename, max_duration=None, voice_prompt=voice_prompt)
+                if tts_result:
+                    audio_path, audio_duration, _ = tts_result
+                    src_audio = Path(audio_path)
+                    dst_audio = output_media / src_audio.name
+                    shutil.copy2(src_audio, dst_audio)
 
-                # For Remotion: normalize plan durations to match actual TTS audio duration
-                if is_remotion and video_plan and self.vgen and self.vgen.planner:
-                    self.vgen.planner._normalize_durations(video_plan, audio_duration)
-                    plan_dur = sum(s.get("duration", 3) for s in video_plan.get("scenes", []))
-                    logger.info(f"Plan durations normalized to audio: {plan_dur:.1f}s")
-
-                # Upload to DashScope OSS for video model (remotion skips this)
-                if not is_remotion:
-                    audio_oss_url = self._upload_to_oss(str(src_audio), self.vgen.model)
-
+        # --- Video generation ---
         media_urls = []
         processed = body
 
-        # If no [VIDEO:...] placeholder found, generate one from script text
-        if not placeholders:
-            script_for_video = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
-            desc = f"总时长15秒。{script_for_video[:200]}"
-            logger.info(f"No [VIDEO:...] placeholder found, auto-generating video description...")
-            placeholders_desc = [desc]
+        # Check for existing [VIDEO:...] placeholders (legacy support)
+        placeholders = list(VIDEO_PLACEHOLDER_RE.finditer(body))
+
+        if is_remotion:
+            # Remotion: no [VIDEO:...] needed, generate directly from plan
+            video_desc = script_text  # not used by Remotion, just for logging
+        elif placeholders:
+            # Legacy: body contains [VIDEO:...] placeholders
+            video_desc = placeholders[0].group(1).strip()
         else:
-            placeholders_desc = [m.group(1).strip() for m in placeholders]
+            # New flow: generate video description from script via video template
+            video_desc = self._generate_video_description(script_text, topic_title, category)
+            if not video_desc:
+                # Fallback: use raw script as description
+                video_desc = f"总时长15秒。{script_text[:200]}"
+                logger.warning("Video description generation failed, using fallback")
 
-        for i, desc in enumerate(placeholders_desc):
-            filename = f"content_{content_id}_{i+1}.mp4"
-            logger.info(f"Generating video {i+1}/{len(placeholders_desc)}: {desc[:50]}...")
+        filename = f"content_{content_id}_1.mp4"
+        logger.info(f"Generating video: {video_desc[:60]}...")
 
-            # For Remotion: pass local audio path + pre-made plan
-            # For DashScope: pass OSS URL
-            if is_remotion:
-                audio_url_arg = str(src_audio) if src_audio else None
-            else:
-                audio_url_arg = audio_oss_url
-
+        if is_remotion:
+            # Remotion: single video from plan, audio already local
+            audio_url_arg = str(src_audio) if src_audio else None
             video_path = self.vgen.generate(
-                desc, filename,
+                video_desc, filename,
                 audio_url=audio_url_arg,
                 subtitles=subtitle_text,
                 keywords=tags,
                 audio_duration=audio_duration,
-                plan=video_plan if is_remotion else None,
+                plan=video_plan,
+                scene_timings=scene_timings if scene_timings else None,
             )
             if video_path:
-                # Copy to output dir
                 src = Path(video_path)
                 dst = output_media / src.name
                 shutil.copy2(src, dst)
-
-                rel_path = f"media/{src.name}"
-                if placeholders:
-                    # Replace existing placeholder
-                    processed = processed.replace(placeholders[i].group(0), f"\n\n[视频]({rel_path})\n", 1)
-                else:
-                    # Auto-generated: append video reference
-                    processed += f"\n\n[视频]({rel_path})\n"
+                processed += f"\n\n[视频]({f'media/{src.name}'})\n"
                 media_urls.append(str(dst))
+        else:
+            # Text-to-video: multi-segment when audio exceeds API limit
+            api_max = getattr(self.vgen, 'duration', 15) or 15
+            needs_split = audio_duration and audio_duration > api_max + 1
+
+            if needs_split and src_audio:
+                # Split audio into segments ≤ API max duration
+                seg_dir = output_media / f"segs_{content_id}"
+                segments = TTSSynthesizer.split_audio(
+                    str(src_audio), str(seg_dir), max_segment_duration=float(api_max)
+                )
+                logger.info(f"Audio split into {len(segments)} segments for multi-segment video")
+
+                # Generate video per segment
+                segment_videos = []
+                for i, seg in enumerate(segments):
+                    seg_oss = self._upload_to_oss(seg["path"], self.vgen.model)
+                    seg_filename = f"content_{content_id}_seg{i}.mp4"
+                    logger.info(f"Generating video segment {i+1}/{len(segments)} ({seg['duration']:.1f}s)...")
+                    seg_video = self.vgen.generate(
+                        video_desc, seg_filename,
+                        audio_url=seg_oss,
+                        audio_duration=seg["duration"],
+                    )
+                    if seg_video:
+                        segment_videos.append(seg_video)
+                    else:
+                        logger.error(f"Video segment {i+1} failed, aborting multi-segment")
+                        break
+
+                if segment_videos and len(segment_videos) == len(segments):
+                    # Concatenate video segments
+                    concat_video = str(output_media / f"content_{content_id}_concat.mp4")
+                    concat_ok = self.vgen.concat_videos(segment_videos, concat_video)
+
+                    if concat_ok:
+                        # Merge full TTS audio into concatenated video
+                        merged = self.vgen._merge_audio(concat_video, str(src_audio))
+                        # Burn subtitles using audio duration for timing
+                        final = self.vgen._burn_subtitles(
+                            merged, subtitle_text, tags, audio_duration,
+                        )
+                        if final:
+                            src = Path(final)
+                            dst = output_media / f"content_{content_id}_1.mp4"
+                            shutil.copy2(src, dst)
+                            rel_path = f"media/{dst.name}"
+                            if placeholders:
+                                processed = processed.replace(placeholders[0].group(0), f"\n\n[视频]({rel_path})\n", 1)
+                            else:
+                                processed += f"\n\n[视频]({rel_path})\n"
+                            media_urls.append(str(dst))
+
+                    # Clean up segment files
+                    try:
+                        shutil.rmtree(seg_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+            else:
+                # Single segment: upload full audio, generate one video
+                if src_audio and not audio_oss_url:
+                    audio_oss_url = self._upload_to_oss(str(src_audio), self.vgen.model)
+                video_path = self.vgen.generate(
+                    video_desc, filename,
+                    audio_url=audio_oss_url,
+                    subtitles=subtitle_text,
+                    keywords=tags,
+                    audio_duration=audio_duration,
+                )
+                if video_path:
+                    src = Path(video_path)
+                    dst = output_media / src.name
+                    shutil.copy2(src, dst)
+                    rel_path = f"media/{src.name}"
+                    if placeholders:
+                        processed = processed.replace(placeholders[0].group(0), f"\n\n[视频]({rel_path})\n", 1)
+                    else:
+                        processed += f"\n\n[视频]({rel_path})\n"
+                    media_urls.append(str(dst))
 
         return processed, media_urls
 
@@ -407,7 +669,7 @@ class ContentGenerator:
 
             # Process inline videos (for douyin and other video-first platforms)
             if platform == "douyin":
-                body, video_urls = self._process_videos(body, content_id, platform, tags=tags)
+                body, video_urls = self._process_videos(body, content_id, platform, tags=tags, category=category)
                 media_urls.extend(video_urls)
 
             filepath = self.store.save_content(

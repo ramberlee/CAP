@@ -1,4 +1,4 @@
-"""Image generation module with DashScope and ModelScope backends."""
+"""Image generation module with DashScope, ModelScope and Agnes backends."""
 
 import logging
 import time
@@ -7,6 +7,7 @@ import requests
 import dashscope
 from dashscope import ImageSynthesis, MultiModalConversation
 from modules.modelscope_client import ModelScopeClient
+from modules.agnes_client import AgnesClient
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ QWEN_V2_MODELS = {
 
 class ImageGenerator:
     def __init__(self, config: dict):
-        # Determine provider: "dashscope" (default) or "modelscope"
+        # Determine provider: "dashscope" (default), "modelscope", or "agnes"
         gen_config = config.get("generation", {})
         self.provider = gen_config.get("image_provider", "dashscope")
 
@@ -36,6 +37,9 @@ class ImageGenerator:
         if self.provider == "modelscope":
             self.ms_client = ModelScopeClient(config)
             logger.info(f"ImageGenerator using ModelScope backend (model: {self.ms_client.image_model})")
+        elif self.provider == "agnes":
+            self.agnes_client = AgnesClient(config)
+            logger.info(f"ImageGenerator using Agnes AI backend (model: {self.agnes_client.image_model})")
         else:
             # Configure DashScope SDK
             dashscope.api_key = self.api_key
@@ -45,6 +49,9 @@ class ImageGenerator:
         """Generate an image from a text prompt. Returns local file path or None."""
         if self.provider == "modelscope":
             return self._generate_modelscope(prompt, filename)
+
+        if self.provider == "agnes":
+            return self._generate_agnes(prompt, filename)
 
         # DashScope backend
         if not self.api_key:
@@ -65,6 +72,17 @@ class ImageGenerator:
             filename=filename,
             negative_prompt=negative_prompt,
             size=self.size,
+        )
+
+    def _generate_agnes(self, prompt: str, filename: str) -> str | None:
+        """Generate using Agnes AI API."""
+        logger.info(f"Generating image via Agnes AI: {prompt[:50]}...")
+        # Convert size format from "1472*1104" to "1472x1104" for Agnes API
+        agnes_size = self.size.replace("*", "x")
+        return self.agnes_client.generate_image(
+            prompt=prompt,
+            filename=filename,
+            size=agnes_size,
         )
 
     def _generate_v2(self, prompt: str, filename: str) -> str | None:

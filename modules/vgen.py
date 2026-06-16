@@ -1,4 +1,4 @@
-"""Video generation module with DashScope, ModelScope and Remotion backends."""
+"""Video generation module with DashScope, ModelScope, Agnes and Remotion backends."""
 
 import json
 import logging
@@ -13,6 +13,7 @@ import requests
 import dashscope
 from dashscope import VideoSynthesis
 from modules.modelscope_client import ModelScopeClient
+from modules.agnes_client import AgnesClient
 from modules.video_planner import VideoPlanner
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class VideoGenerator:
     def __init__(self, config: dict):
-        # Determine provider: "dashscope" (default), "modelscope", or "remotion"
+        # Determine provider: "dashscope" (default), "modelscope", "agnes", or "remotion"
         gen_config = config.get("generation", {})
         self.provider = gen_config.get("video_provider", "dashscope")
 
@@ -52,6 +53,9 @@ class VideoGenerator:
         if self.provider == "modelscope":
             self.ms_client = ModelScopeClient(config)
             logger.info(f"VideoGenerator using ModelScope backend (model: {self.ms_client.video_model})")
+        elif self.provider == "agnes":
+            self.agnes_client = AgnesClient(config)
+            logger.info(f"VideoGenerator using Agnes AI backend (model: {self.agnes_client.video_model})")
         else:
             self.ms_client = None
 
@@ -140,7 +144,65 @@ class VideoGenerator:
         logger.warning("npx not found. Install Node.js from https://nodejs.org")
         return "npx"  # fallback, will likely fail later
 
-    def generate(self, prompt: str, filename: str, audio_url: str | None = None, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None, plan: dict | None = None) -> str | None:
+    def concat_videos(self, video_paths: list[str], output_path: str) -> str | None:
+        """Concatenate multiple video files into one using ffmpeg.
+
+        All videos must have the same resolution and codec.
+        Uses concat demuxer for fast, re-encoding-free joining.
+
+        Args:
+            video_paths: List of video file paths to concatenate in order.
+            output_path: Output video file path.
+
+        Returns:
+            Output path on success, None on failure.
+        """
+        if not video_paths:
+            return None
+        if len(video_paths) == 1:
+            shutil.copy2(video_paths[0], output_path)
+            return output_path
+
+        # Write concat list file
+        list_path = Path(output_path).with_suffix(".txt")
+        with open(list_path, "w", encoding="utf-8") as f:
+            for p in video_paths:
+                # Escape single quotes for ffmpeg concat demuxer
+                safe_path = str(Path(p).resolve()).replace("\\", "/").replace("'", "'\\''")
+                f.write(f"file '{safe_path}'\n")
+
+        try:
+            subprocess.run(
+                [self._ffmpeg_path, "-y",
+                 "-f", "concat", "-safe", "0",
+                 "-i", str(list_path),
+                 "-c", "copy",
+                 str(output_path)],
+                check=True, capture_output=True, text=True, timeout=120,
+            )
+            list_path.unlink(missing_ok=True)
+            logger.info(f"Videos concatenated: {len(video_paths)} segments → {output_path}")
+            return output_path
+        except Exception as e:
+            logger.error(f"Video concatenation failed: {e}")
+            list_path.unlink(missing_ok=True)
+            return None
+
+    @staticmethod
+    def _pick_api_duration(audio_duration: float, supported: list[int] | None = None) -> int:
+        """Pick the smallest supported API duration that covers the audio.
+
+        DashScope/ModelScope video APIs only accept fixed duration values.
+        This ensures the video is at least as long as the audio.
+        """
+        if supported is None:
+            supported = [5, 10, 15]
+        for d in sorted(supported):
+            if audio_duration <= d:
+                return d
+        return max(supported)
+
+    def generate(self, prompt: str, filename: str, audio_url: str | None = None, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None, plan: dict | None = None, scene_timings: list[dict] | None = None) -> str | None:
         """Generate a video from a text prompt, optionally with synced audio.
 
         Args:
@@ -151,6 +213,8 @@ class VideoGenerator:
             keywords: Optional list of keywords to highlight in subtitles.
             audio_duration: Optional actual TTS audio duration in seconds for subtitle timing.
             plan: Optional pre-generated video composition plan (used by Remotion).
+            scene_timings: Optional per-scene timing data for precise subtitle sync.
+                          Each dict has keys: text, start, end (in seconds).
 
         Returns:
             Local file path of generated video, or None.
@@ -163,22 +227,30 @@ class VideoGenerator:
                 keywords=keywords,
                 audio_duration=audio_duration,
                 plan=plan,
+                scene_timings=scene_timings,
             )
 
         if self.provider == "modelscope":
-            return self._generate_modelscope(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration)
+            return self._generate_modelscope(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration, scene_timings=scene_timings)
+
+        if self.provider == "agnes":
+            return self._generate_agnes(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration, scene_timings=scene_timings)
 
         # DashScope backend
         if not self.api_key:
             logger.warning("DashScope API key not configured, skipping video generation")
             return None
 
+        # Pick API duration: smallest supported value that covers the audio
+        api_duration = self._pick_api_duration(audio_duration or self.duration)
+        logger.info(f"API duration: {api_duration}s (audio: {audio_duration}s)")
+
         try:
             kwargs = dict(
                 model=self.model,
                 prompt=prompt,
                 size=self.size,
-                duration=self.duration,
+                duration=api_duration,
             )
             if audio_url:
                 kwargs["audio_url"] = audio_url
@@ -212,12 +284,12 @@ class VideoGenerator:
                     video_url = result.output.get("video_url")
                     if video_url:
                         video_path = self._download_video(video_url, filename)
-                        return self._burn_subtitles(video_path, subtitles, keywords, audio_duration)
+                        return self._finalize_video(video_path, subtitles, keywords, audio_duration, scene_timings)
                     # Try alternative response format
                     results = result.output.get("results", [])
                     if results and results[0].get("url"):
                         video_path = self._download_video(results[0]["url"], filename)
-                        return self._burn_subtitles(video_path, subtitles, keywords, audio_duration)
+                        return self._finalize_video(video_path, subtitles, keywords, audio_duration, scene_timings)
                     logger.error("No video URL in succeeded response")
                     return None
 
@@ -235,35 +307,82 @@ class VideoGenerator:
             logger.error(f"Video generation failed: {e}")
             return None
 
-    def _generate_modelscope(self, prompt: str, filename: str, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None) -> str | None:
-        """Generate video using ModelScope API.
+    def _finalize_video(self, video_path: str | None, subtitles: str | None, keywords: list[str] | None, audio_duration: float | None, scene_timings: list[dict] | None) -> str | None:
+        """Finalize a generated video: burn subtitles using the video's actual duration.
 
-        Args:
-            prompt: Text description for video generation.
-            filename: Output filename.
-            subtitles: Optional text to burn into the video as subtitles.
-            keywords: Optional list of keywords to highlight in subtitles.
-            audio_duration: Optional actual TTS audio duration in seconds for subtitle timing.
-
-        Returns:
-            Local file path of generated video, or None.
+        The video model may produce a video whose duration differs from the TTS audio.
+        To keep subtitles in sync with the visual content, we probe the actual video
+        duration and use it for subtitle timing instead of audio_duration.
         """
+        if not video_path:
+            return None
+
+        # Use video's actual duration for subtitle timing (not audio_duration)
+        # This ensures subtitles are synced to what's visually playing
+        video_duration = self._probe_video_duration(video_path)
+        subtitle_duration = video_duration or audio_duration
+
+        if video_duration and audio_duration and abs(video_duration - audio_duration) > 1.0:
+            logger.info(f"Video/Audio duration mismatch: video={video_duration:.1f}s, "
+                       f"audio={audio_duration:.1f}s — using video duration for subtitles")
+
+        return self._burn_subtitles(video_path, subtitles, keywords, subtitle_duration, scene_timings)
+
+    def _generate_modelscope(self, prompt: str, filename: str, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None, scene_timings: list[dict] | None = None) -> str | None:
+        """Generate video using ModelScope API."""
         logger.info(f"Generating video via ModelScope: {prompt[:80]}...")
+        api_duration = self._pick_api_duration(audio_duration or self.duration)
         video_path = self.ms_client.generate_video(
             prompt=prompt,
             filename=filename,
             size=self.size,
-            duration=self.duration,
+            duration=api_duration,
         )
         if video_path:
-            return self._burn_subtitles(video_path, subtitles, keywords, audio_duration)
+            return self._finalize_video(video_path, subtitles, keywords, audio_duration, scene_timings)
         return None
 
-    def _burn_subtitles(self, video_path: str | None, subtitle_text: str | None, keywords: list[str] | None = None, audio_duration: float | None = None) -> str | None:
+    def _generate_agnes(self, prompt: str, filename: str, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None, scene_timings: list[dict] | None = None) -> str | None:
+        """Generate video using Agnes AI API."""
+        logger.info(f"Generating video via Agnes AI: {prompt[:80]}...")
+
+        width, height = 1152, 768
+        if "*" in self.size:
+            parts = self.size.split("*")
+            width, height = int(parts[0]), int(parts[1])
+        elif "x" in self.size:
+            parts = self.size.split("x")
+            width, height = int(parts[0]), int(parts[1])
+
+        fps = 24
+        num_frames = min(441, int(self.duration * fps))
+        num_frames = ((num_frames - 1) // 8) * 8 + 1
+
+        video_path = self.agnes_client.generate_video(
+            prompt=prompt,
+            filename=filename,
+            width=width,
+            height=height,
+            num_frames=num_frames,
+            frame_rate=fps,
+        )
+        if video_path:
+            return self._finalize_video(video_path, subtitles, keywords, audio_duration, scene_timings)
+        return None
+
+    def _burn_subtitles(self, video_path: str | None, subtitle_text: str | None, keywords: list[str] | None = None, audio_duration: float | None = None, scene_timings: list[dict] | None = None) -> str | None:
         """Burn subtitles into video using ASS format (inspired by CapCut Mate).
 
         Supports: text color, border/outline, alignment, alpha,
         keyword highlighting, fade in/out animations, and position control.
+
+        Args:
+            video_path: Path to the video file.
+            subtitle_text: Full subtitle text.
+            keywords: Optional keywords to highlight.
+            audio_duration: Total audio duration for fallback timing.
+            scene_timings: Optional per-scene timing for precise sync.
+                          Each dict: {text, start, end} in seconds.
         """
         if not video_path or not subtitle_text or not self.video_subtitles:
             return video_path
@@ -277,7 +396,7 @@ class VideoGenerator:
         duration = audio_duration or self._probe_video_duration(video_path) or float(self.duration)
         try:
             # Generate ASS subtitle content (richer than SRT, supports CapCut Mate-style styling)
-            ass_content = self._build_ass(subtitle_text, duration, keywords)
+            ass_content = self._build_ass(subtitle_text, duration, keywords, scene_timings)
 
             output_path = Path(video_path).with_name(f"{Path(video_path).stem}.sub.mp4")
 
@@ -321,25 +440,35 @@ class VideoGenerator:
             logger.warning(f"Failed to burn subtitles into video: {e}")
             return video_path
 
-    def _build_ass(self, text: str, duration: float, keywords: list[str] | None = None) -> str:
+    def _build_ass(self, text: str, duration: float, keywords: list[str] | None = None, scene_timings: list[dict] | None = None) -> str:
         """Build ASS subtitle content with CapCut Mate-inspired styling.
 
         Generates a complete .ass file including:
         - [Script Info] with resolution from self.size
         - [V4+ Styles] with text color, border, alignment, alpha, outline, shadow
         - [Events] with keyword highlighting and fade in/out animations
+
+        Args:
+            text: Full subtitle text.
+            duration: Total duration in seconds.
+            keywords: Optional keywords to highlight.
+            scene_timings: Optional per-scene timing for precise sync.
         """
         lines = self._split_subtitle_lines(text)
         if not lines:
             return ""
 
-        groups = [lines[i:i + self.subtitle_max_lines]
-                  for i in range(0, len(lines), self.subtitle_max_lines)]
-
-        # Proportional timing: each group's duration is based on its character count
-        group_chars = [sum(len(line) for line in group) for group in groups]
-        total_chars = sum(group_chars) or 1
-        group_durations = [max(1.5, duration * chars / total_chars) for chars in group_chars]
+        # Build subtitle groups and timing
+        if scene_timings:
+            # Scene-aware timing: map subtitle lines to scene time windows
+            groups, group_durations = self._build_scene_subtitle_groups(lines, scene_timings, duration)
+        else:
+            # Fallback: proportional timing based on character count
+            groups = [lines[i:i + self.subtitle_max_lines]
+                      for i in range(0, len(lines), self.subtitle_max_lines)]
+            group_chars = [sum(len(line) for line in group) for group in groups]
+            total_chars = sum(group_chars) or 1
+            group_durations = [max(1.5, duration * chars / total_chars) for chars in group_chars]
 
         width, height = self.size.split('*')
         kw_list = keywords or []
@@ -404,6 +533,63 @@ class VideoGenerator:
             ass_parts.append(f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{group_text}")
 
         return "\n".join(ass_parts) + "\n"
+
+    def _build_scene_subtitle_groups(self, lines: list[str], scene_timings: list[dict], total_duration: float) -> tuple[list[list[str]], list[float]]:
+        """Map subtitle lines to scene time windows for precise sync.
+
+        Distributes subtitle lines across scenes proportionally by scene duration,
+        ensuring each group's timing matches the actual speech window.
+
+        Args:
+            lines: Split subtitle lines.
+            scene_timings: Per-scene timing [{text, start, end}, ...].
+            total_duration: Total audio/video duration.
+
+        Returns:
+            (groups, durations) - same format as the fallback path.
+        """
+        # Build groups (same as fallback)
+        groups = [lines[i:i + self.subtitle_max_lines]
+                  for i in range(0, len(lines), self.subtitle_max_lines)]
+        n_groups = len(groups)
+
+        if not scene_timings or n_groups == 0:
+            group_chars = [sum(len(line) for line in group) for group in groups]
+            total_chars = sum(group_chars) or 1
+            return groups, [max(1.5, total_duration * chars / total_chars) for chars in group_chars]
+
+        # Map each subtitle group to a scene time window
+        # Distribute groups across scenes by scene duration weight
+        scene_durations = [max(0.1, s["end"] - s["start"]) for s in scene_timings]
+        total_scene_dur = sum(scene_durations) or 1.0
+
+        # Calculate how many groups each scene should get (proportional to duration)
+        group_durations = []
+        scene_idx = 0
+        scene_remaining = scene_durations[0] if scene_durations else total_duration
+        scene_start = scene_timings[0]["start"] if scene_timings else 0
+        group_idx_in_scene = 0
+        groups_in_scene = max(1, round(n_groups * scene_durations[0] / total_scene_dur)) if scene_durations else n_groups
+
+        for g in range(n_groups):
+            # Duration for this group within its scene
+            if groups_in_scene > 0:
+                group_dur = scene_remaining / groups_in_scene
+            else:
+                group_dur = total_duration / n_groups
+            group_durations.append(max(1.0, round(group_dur, 2)))
+
+            groups_in_scene -= 1
+            scene_remaining -= group_dur
+
+            # Move to next scene if this scene's groups are exhausted
+            if groups_in_scene <= 0 and scene_idx < len(scene_durations) - 1:
+                scene_idx += 1
+                scene_remaining = scene_durations[scene_idx]
+                groups_in_scene = max(1, round(n_groups * scene_durations[scene_idx] / total_scene_dur))
+                group_idx_in_scene = 0
+
+        return groups, group_durations
 
     def _split_subtitle_lines(self, text: str) -> list[str]:
         cleaned = re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
@@ -545,6 +731,7 @@ class VideoGenerator:
         keywords: list[str] | None = None,
         audio_duration: float | None = None,
         plan: dict | None = None,
+        scene_timings: list[dict] | None = None,
     ) -> str | None:
         """Generate video using Remotion (programmatic text-based video).
 
@@ -585,13 +772,15 @@ class VideoGenerator:
             logger.error(f"Remotion project directory not found: {remotion_dir}")
             return None
 
-        # Ensure video is at least as long as audio (extend last scene if needed)
-        if audio_duration and plan_duration < audio_duration - 0.5:
-            gap = audio_duration - plan_duration
+        # Ensure video duration matches audio exactly.
+        # With per-scene TTS, audio includes inter-scene gaps (~0.15s each)
+        # that aren't part of any scene's duration. Extend last scene to cover.
+        if audio_duration and plan_duration < audio_duration:
+            gap = round(audio_duration - plan_duration, 2)
             if plan.get("scenes"):
-                plan["scenes"][-1]["duration"] += gap
-                logger.info(f"Extended last scene by {gap:.1f}s to match audio duration")
+                plan["scenes"][-1]["duration"] = round(plan["scenes"][-1]["duration"] + gap, 2)
                 plan_duration = audio_duration
+                logger.info(f"Extended last scene by {gap:.1f}s to match audio ({audio_duration:.1f}s)")
 
         input_json_path = remotion_dir / "input.json"
         try:
