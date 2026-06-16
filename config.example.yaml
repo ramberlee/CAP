@@ -23,8 +23,6 @@ generation:
   temperature: 0.7
   # 每类别默认生成数量（道和术各生成几篇）
   default_limit: 1
-  # 生成语言
-  language: "zh-CN"
   # 自动生成配图
   auto_image: true
   # 自动生成视频（抖音等视频平台）
@@ -54,7 +52,6 @@ generation:
 # Qwen-Image 生图配置（阿里云百炼）
 dashscope:
   api_key: "your-dashscope-api-key"      # 替换为你的百炼 API Key
-  base_url: "https://dashscope.aliyuncs.com/api/v1"
   model: "qwen-image-2.0-pro"            # 可选: qwen-image / qwen-image-plus / qwen-image-max / qwen-image-2.0-pro
   size: "1472*1104"                       # 图片分辨率
   # 图片保存目录
@@ -124,7 +121,6 @@ platforms:
     # 浏览器通道: chrome / msedge（使用系统已安装的浏览器）
     channel: "msedge"
     # 发布后等待秒数（留给验证码/审核弹窗处理时间）
-    post_publish_wait: 10
 
   douyin:
     enabled: true                    # 是否启用该平台（内容生成 + 发布）
@@ -144,4 +140,3 @@ database:
 # 日志
 logging:
   level: "INFO"
-  file: "db/pipeline.log"

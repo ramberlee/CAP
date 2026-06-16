@@ -238,3 +238,4 @@ remotion/chrome/*
 remotion/chrome-win64/*
 chrome*
 .codegraph/*
+.reasonix/*
