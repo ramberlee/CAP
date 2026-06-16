@@ -160,7 +160,7 @@ class AgnesClient:
                 AGNES_VIDEO_ENDPOINT,
                 headers=self.headers,
                 json=data,
-                timeout=30,
+                timeout=120,
             )
 
             if resp.status_code != 200:

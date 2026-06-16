@@ -1,12 +1,10 @@
 """Video generation module with DashScope, ModelScope, Agnes and Remotion backends."""
 
-import json
 import logging
 import os
 import re
 import shutil
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 import requests
@@ -14,6 +12,7 @@ import dashscope
 from dashscope import VideoSynthesis
 from modules.modelscope_client import ModelScopeClient
 from modules.agnes_client import AgnesClient
+from modules.remotion_client import RemotionClient
 from modules.video_planner import VideoPlanner
 
 logger = logging.getLogger(__name__)
@@ -33,31 +32,20 @@ class VideoGenerator:
         self.media_dir = Path(ds_config.get("media_dir", "media"))
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
-        # Remotion-specific config
-        remotion_config = config.get("remotion", {})
-        self.remotion_project_dir = Path(remotion_config.get("project_dir", "remotion"))
-        self.remotion_fps = remotion_config.get("fps", 30)
-        self.remotion_browser_executable = remotion_config.get("browser_executable", None)
-        # Resolve relative paths to absolute (paths in config are relative to project root)
-        if self.remotion_browser_executable and not os.path.isabs(self.remotion_browser_executable):
-            self.remotion_browser_executable = os.path.abspath(self.remotion_browser_executable)
-        self.remotion_chrome_flags = remotion_config.get("chrome_flags", "")
-
-        # Find npx executable (needed because Python subprocess may not inherit Node.js PATH)
-        self._npx_path = self._find_npx()
-
-        # Find ffmpeg executable (needed for audio merging)
-        self._ffmpeg_path = self._find_ffmpeg()
-
         # Initialize provider-specific client
         if self.provider == "modelscope":
             self.ms_client = ModelScopeClient(config)
+            self.remotion_client = None
             logger.info(f"VideoGenerator using ModelScope backend (model: {self.ms_client.video_model})")
         elif self.provider == "agnes":
             self.agnes_client = AgnesClient(config)
+            self.remotion_client = None
             logger.info(f"VideoGenerator using Agnes AI backend (model: {self.agnes_client.video_model})")
+        elif self.provider == "remotion":
+            self.remotion_client = RemotionClient(config)
+            logger.info(f"VideoGenerator using Remotion backend (project: {self.remotion_client.project_dir})")
         else:
-            self.ms_client = None
+            self.remotion_client = None
 
         # Video planner (used by remotion provider)
         self.planner = VideoPlanner(config) if self.provider == "remotion" else None
@@ -88,62 +76,6 @@ class VideoGenerator:
 
         dashscope.api_key = self.api_key
 
-    def _find_ffmpeg(self) -> str:
-        """Locate the ffmpeg executable for audio merging."""
-        # Try shutil.which first (respects PATH)
-        found = shutil.which("ffmpeg")
-        if found:
-            return found
-        # Windows: also try ffmpeg.exe
-        found = shutil.which("ffmpeg.exe")
-        if found:
-            return found
-        # Search PATH directories manually (in case shutil.which misbehaves)
-        for path_dir in os.environ.get("PATH", "").split(os.pathsep):
-            for name in ("ffmpeg.exe", "ffmpeg"):
-                p = os.path.join(path_dir, name)
-                if os.path.isfile(p):
-                    return p
-        # Search common installation paths
-        candidates = [
-            os.path.expanduser("~/bin/ffmpeg.exe"),
-            os.path.expanduser("~/bin/ffmpeg"),
-            r"C:\ffmpeg\bin\ffmpeg.exe",
-            r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-            r"C:\tools\ffmpeg\bin\ffmpeg.exe",
-        ]
-        for p in candidates:
-            if os.path.isfile(p):
-                return p
-        # Last resort: hope it's in PATH at runtime (may fail)
-        logger.warning("ffmpeg not found in PATH or common locations. "
-                      "Install ffmpeg from https://ffmpeg.org/download.html")
-        return "ffmpeg"
-
-    def _find_npx(self) -> str:
-        """Locate the npx executable for running Remotion CLI."""
-        # Check common Node.js installation paths
-        candidates = [
-            "npx",  # hope it's in PATH
-            r"C:\Program Files\nodejs\npx.cmd",
-            r"C:\Program Files (x86)\nodejs\npx.cmd",
-            os.path.expanduser(r"~\AppData\Roaming\npm\npx.cmd"),
-            os.path.expanduser(r"~\AppData\Local\npm\npx.cmd"),
-            # nvm-windows paths
-            r"E:\nvm4w\nodejs\npx.cmd",
-            os.path.expanduser(r"~\AppData\Local\nvm\npx.cmd"),
-        ]
-        for candidate in candidates:
-            try:
-                result = subprocess.run([candidate, "--version"], capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    logger.debug(f"Found npx: {candidate}")
-                    return candidate
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                continue
-        logger.warning("npx not found. Install Node.js from https://nodejs.org")
-        return "npx"  # fallback, will likely fail later
-
     def concat_videos(self, video_paths: list[str], output_path: str) -> str | None:
         """Concatenate multiple video files into one using ffmpeg.
 
@@ -157,6 +89,10 @@ class VideoGenerator:
         Returns:
             Output path on success, None on failure.
         """
+        # Delegate to RemotionClient if available (has ffmpeg path management)
+        if self.remotion_client:
+            return self.remotion_client.concat_videos(video_paths, output_path)
+
         if not video_paths:
             return None
         if len(video_paths) == 1:
@@ -167,13 +103,13 @@ class VideoGenerator:
         list_path = Path(output_path).with_suffix(".txt")
         with open(list_path, "w", encoding="utf-8") as f:
             for p in video_paths:
-                # Escape single quotes for ffmpeg concat demuxer
                 safe_path = str(Path(p).resolve()).replace("\\", "/").replace("'", "'\\''")
                 f.write(f"file '{safe_path}'\n")
 
         try:
+            ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
             subprocess.run(
-                [self._ffmpeg_path, "-y",
+                [ffmpeg, "-y",
                  "-f", "concat", "-safe", "0",
                  "-i", str(list_path),
                  "-c", "copy",
@@ -187,6 +123,40 @@ class VideoGenerator:
             logger.error(f"Video concatenation failed: {e}")
             list_path.unlink(missing_ok=True)
             return None
+
+    def _merge_audio(self, video_path: str, audio_path: str, trim_duration: float | None = None) -> str | None:
+        """Merge audio into a video file using ffmpeg.
+
+        Delegates to RemotionClient if available, otherwise uses local ffmpeg.
+        """
+        if self.remotion_client:
+            return self.remotion_client._merge_audio(video_path, audio_path, trim_duration)
+
+        # Fallback: direct ffmpeg merge
+        if not audio_path or not Path(audio_path).exists():
+            return video_path
+
+        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+        video_p = Path(video_path)
+        temp_output = video_p.with_name(f"{video_p.stem}_with_audio.mp4")
+
+        try:
+            cmd = [
+                ffmpeg, "-y",
+                "-i", str(video_p),
+                "-i", audio_path,
+                "-c:v", "copy", "-c:a", "aac",
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-shortest",
+                str(temp_output),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
+            temp_output.replace(video_p)
+            logger.info(f"Audio merged: {video_p}")
+            return str(video_p)
+        except Exception as e:
+            logger.warning(f"Audio merge failed: {e}")
+            return video_path
 
     @staticmethod
     def _pick_api_duration(audio_duration: float, supported: list[int] | None = None) -> int:
@@ -592,25 +562,158 @@ class VideoGenerator:
         return groups, group_durations
 
     def _split_subtitle_lines(self, text: str) -> list[str]:
+        """Split subtitle text into balanced lines for ASS display.
+
+        Rules:
+        1. Split at natural punctuation boundaries (，。！？、；：)
+        2. Never put punctuation at the start of a line
+        3. Never leave a single orphan character on its own line
+        4. Balance line lengths within each group (subtitle_max_lines)
+        """
         cleaned = re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
         if not cleaned:
             return []
 
-        parts = re.split(r"([。！？!?])", cleaned)
-        sentences = []
-        for i in range(0, len(parts) - 1, 2):
-            sentence = (parts[i].strip() + parts[i + 1]).strip()
-            if sentence:
-                sentences.append(sentence)
-        if len(parts) % 2 == 1 and parts[-1].strip():
-            sentences.append(parts[-1].strip())
+        # Step 1: Split into segments at natural punctuation boundaries.
+        # Keep punctuation attached to the preceding segment.
+        # Split points: ，。！？、；：, and Chinese equivalents
+        segments = []
+        buf = ""
+        for ch in cleaned:
+            buf += ch
+            if ch in "，。！？、；：,;!?":
+                segments.append(buf)
+                buf = ""
+        if buf:
+            segments.append(buf)
 
+        # Step 2: Split oversized segments that exceed the line limit.
+        split_segments = []
+        for seg in segments:
+            if len(seg) <= self.subtitle_line_chars:
+                split_segments.append(seg)
+            else:
+                # Split long segment, preferring natural break points
+                remaining = seg
+                while len(remaining) > self.subtitle_line_chars:
+                    cut = self.subtitle_line_chars
+                    best_cut = None
+                    # Priority 1: punctuation within limit
+                    for j in range(min(cut, len(remaining)), 0, -1):
+                        if remaining[j - 1] in "，。！？、；：,;!?":
+                            best_cut = j
+                            break
+                    # Priority 2: space (word boundary for English)
+                    if best_cut is None:
+                        for j in range(min(cut, len(remaining)), 0, -1):
+                            if remaining[j - 1] == " ":
+                                best_cut = j
+                                break
+                    # Priority 3: hyphen/dot/paren (word boundary for mixed text)
+                    if best_cut is None:
+                        for j in range(min(cut, len(remaining)), 0, -1):
+                            if remaining[j - 1] in "-—.（(）)":
+                                best_cut = j
+                                break
+                    # Priority 4: boundary between Chinese and non-Chinese
+                    if best_cut is None:
+                        for j in range(min(cut, len(remaining)), 1, -1):
+                            prev_cn = '一' <= remaining[j-1] <= '鿿'
+                            curr_cn = '一' <= remaining[j] <= '鿿' if j < len(remaining) else False
+                            if prev_cn != curr_cn:
+                                best_cut = j
+                                break
+                    # Priority 5: split at limit (Chinese text is fine at any position)
+                    if best_cut is None:
+                        best_cut = cut
+                    split_segments.append(remaining[:best_cut])
+                    remaining = remaining[best_cut:]
+                if remaining:
+                    split_segments.append(remaining)
+        segments = split_segments
+
+        # Step 3: Merge orphan segments forward.
+        # A segment with only 1 non-punctuation char is an orphan.
+        # Pure punctuation segments are also orphans.
+        # But don't merge if it would exceed the line limit.
+        merged = []
+        for seg in segments:
+            stripped = seg.rstrip("，。！？、；：,;!?")
+            is_orphan = len(stripped) <= 1
+            if merged and is_orphan:
+                # Only merge if the result won't exceed the limit
+                if len(merged[-1]) + len(seg) <= self.subtitle_line_chars:
+                    merged[-1] += seg
+                else:
+                    # Can't merge - keep as separate segment
+                    merged.append(seg)
+            else:
+                merged.append(seg)
+        segments = merged
+
+        # Step 4: Build lines respecting subtitle_line_chars limit.
+        # Try to pack segments into lines without exceeding the limit.
+        # Ensure no line starts with punctuation.
         lines = []
-        for sentence in sentences:
-            for i in range(0, len(sentence), self.subtitle_line_chars):
-                lines.append(sentence[i : i + self.subtitle_line_chars].strip())
+        current_line = ""
+        for seg in segments:
+            if not current_line:
+                current_line = seg
+            elif len(current_line) + len(seg) <= self.subtitle_line_chars:
+                current_line += seg
+            else:
+                # Current line is full, start a new one.
+                # But if seg starts with punctuation, try to append it anyway
+                # (punctuation should not start a line)
+                seg_stripped = seg.lstrip()
+                if seg_stripped and seg_stripped[0] in "，。！？、；：,;!?":
+                    # Punctuation segment - force append to current line
+                    # even if it slightly exceeds limit (better than punct at start)
+                    current_line += seg
+                else:
+                    lines.append(current_line.rstrip())
+                    current_line = seg
+        if current_line:
+            lines.append(current_line.rstrip())
 
-        return lines
+        # Step 4: Balance adjacent line pairs for even display.
+        # If two consecutive lines differ by more than 4 chars, try to rebalance.
+        balanced = []
+        i = 0
+        while i < len(lines):
+            if i + 1 < len(lines):
+                a, b = lines[i], lines[i + 1]
+                # Check if combining and re-splitting gives better balance
+                combined = a + b
+                if len(combined) <= self.subtitle_line_chars:
+                    # Both fit on one line
+                    balanced.append(combined)
+                    i += 2
+                    continue
+                # Find the best split point (prefer punctuation boundaries)
+                best_split = None
+                best_diff = abs(len(a) - len(b))
+                for j in range(1, len(combined)):
+                    ch = combined[j - 1]
+                    if ch in "，。！？、；：,;!?":
+                        left = combined[:j]
+                        right = combined[j:]
+                        if right and len(left) <= self.subtitle_line_chars and len(right) <= self.subtitle_line_chars:
+                            diff = abs(len(left) - len(right))
+                            if diff < best_diff:
+                                best_diff = diff
+                                best_split = (left, right)
+                if best_split:
+                    balanced.extend(best_split)
+                else:
+                    balanced.append(a)
+                    balanced.append(b)
+                i += 2
+            else:
+                balanced.append(lines[i])
+                i += 1
+
+        return balanced
 
     @staticmethod
     def _format_ass_timestamp(seconds: float) -> str:
@@ -746,6 +849,7 @@ class VideoGenerator:
             keywords: Optional tags/keywords for content context.
             audio_duration: Target audio duration (used if plan not provided).
             plan: Optional pre-generated video composition plan.
+            scene_timings: Unused for Remotion (kept for interface consistency).
         """
 
         # Step 1: Get or generate composition plan
@@ -766,12 +870,6 @@ class VideoGenerator:
         # Calculate actual video duration from plan scenes
         plan_duration = sum(s.get("duration", 3) for s in plan.get("scenes", []))
 
-        # Step 2: Write plan to input.json for Remotion
-        remotion_dir = Path(self.remotion_project_dir)
-        if not remotion_dir.exists():
-            logger.error(f"Remotion project directory not found: {remotion_dir}")
-            return None
-
         # Ensure video duration matches audio exactly.
         # With per-scene TTS, audio includes inter-scene gaps (~0.15s each)
         # that aren't part of any scene's duration. Extend last scene to cover.
@@ -782,199 +880,10 @@ class VideoGenerator:
                 plan_duration = audio_duration
                 logger.info(f"Extended last scene by {gap:.1f}s to match audio ({audio_duration:.1f}s)")
 
-        input_json_path = remotion_dir / "input.json"
-        try:
-            input_json_path.write_text(
-                json.dumps({"plan": plan}, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            logger.info(f"Composition plan written to {input_json_path}")
-        except Exception as e:
-            logger.error(f"Failed to write input.json: {e}")
-            return None
-
-        # Step 3: Render video using Remotion CLI
-        output_path = Path(self.media_dir).resolve() / filename
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            logger.info("Rendering video with Remotion...")
-
-            # Build command
-            cmd = [
-                self._npx_path,
-                "remotion",
-                "render",
-                "src/Root.tsx",
-                "CAPVideo",
-                str(output_path),
-                "--props=./input.json",
-                "--overwrite",
-            ]
-
-            # Add optional browser executable
-            if self.remotion_browser_executable:
-                cmd.extend(["--browser-executable", self.remotion_browser_executable])
-
-            # Add optional chrome flags
-            if self.remotion_chrome_flags:
-                cmd.extend(["--chrome-flags", self.remotion_chrome_flags])
-
-            result = subprocess.run(
-                cmd,
-                cwd=str(remotion_dir),
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 min timeout
-            )
-
-            if result.returncode != 0:
-                logger.error(f"Remotion render failed:\n{result.stderr}")
-                return None
-
-            if output_path.exists():
-                logger.info(f"Video rendered: {output_path}")
-                return self._merge_audio(output_path, audio_path, plan_duration)
-
-            # Try to find the output in the remotion project directory
-            alt_path = Path(self.remotion_project_dir).resolve() / "out" / filename
-            if alt_path.exists():
-                logger.info(f"Video rendered (alt path): {alt_path}")
-                import shutil
-                shutil.copy2(str(alt_path), str(output_path))
-                return self._merge_audio(output_path, audio_path, plan_duration)
-
-            logger.error("Remotion render completed but output not found")
-            return None
-
-        except subprocess.TimeoutExpired:
-            logger.error("Remotion render timed out (5 min)")
-            return None
-        except FileNotFoundError:
-            logger.error(
-                "npx/remotion not found. Ensure Node.js is installed "
-                "and 'npm install' has been run in the remotion/ directory."
-            )
-            return None
-        except Exception as e:
-            logger.error(f"Remotion render failed: {e}")
-            return None
-
-    def _merge_audio(self, video_path: str | Path, audio_path: str | None, trim_duration: float | None = None) -> str | None:
-        """Merge audio into a video file using ffmpeg.
-
-        If no audio path is provided, returns the video path unchanged.
-        The original video file is replaced by the audio-merged version.
-
-        Args:
-            video_path: Path to the rendered video file.
-            audio_path: Optional local path to audio file to embed.
-            trim_duration: If set, trim video to this exact duration (seconds)
-                           before merging audio, to remove excess frames from
-                           Remotion's fixed-duration composition.
-        """
-        if not audio_path or not Path(audio_path).exists():
-            logger.info(f"No audio to merge: path={audio_path}, exists={Path(audio_path).exists() if audio_path else 'N/A'}")
-            return str(video_path)
-
-        # Check ffmpeg executable
-        if not shutil.which(self._ffmpeg_path) and not os.path.isfile(self._ffmpeg_path):
-            logger.warning(f"ffmpeg not found at '{self._ffmpeg_path}', skipping audio merge")
-            return str(video_path)
-
-        video_path = Path(video_path)
-        temp_output = video_path.with_name(f"{video_path.stem}_with_audio.mp4")
-
-        try:
-            # Step 1: Trim video to exact duration if needed
-            working_video = video_path
-            if trim_duration and trim_duration > 0:
-                trimmed = video_path.with_name(f"{video_path.stem}_trimmed.mp4")
-                subprocess.run(
-                    [self._ffmpeg_path, "-y",
-                     "-i", str(video_path),
-                     "-t", f"{trim_duration:.2f}",
-                     "-c", "copy",
-                     str(trimmed)],
-                    check=True, capture_output=True, text=True, timeout=30,
-                )
-                working_video = trimmed
-            # Probe audio duration
-            audio_dur = 0
-            try:
-                probe = subprocess.run(
-                    [self._ffmpeg_path, "-i", str(audio_path), "-f", "null", "-"],
-                    capture_output=True, text=True, timeout=10
-                )
-                for line in probe.stderr.split('\n'):
-                    if 'Duration' in line:
-                        parts = line.strip().split(',')[0].split('Duration:')[1].strip()
-                        h, m, s = parts.split(':')
-                        audio_dur = int(h)*3600 + int(m)*60 + float(s)
-            except Exception:
-                pass
-
-            cmd = [
-                self._ffmpeg_path,
-                "-y",
-                "-i", str(working_video),
-                "-i", str(audio_path),
-                "-c:v", "copy",
-                "-c:a", "aac",
-                "-map", "0:v:0",
-                "-map", "1:a:0",
-            ]
-
-            # If audio is shorter than video, pad with silence so audio isn't cut
-            if audio_dur > 0:
-                # Get video duration via ffprobe
-                video_dur = 0
-                try:
-                    probe_v = subprocess.run(
-                        [self._ffmpeg_path, "-i", str(working_video), "-f", "null", "-"],
-                        capture_output=True, text=True, timeout=10
-                    )
-                    for line in probe_v.stderr.split('\n'):
-                        if 'Duration' in line:
-                            parts = line.strip().split(',')[0].split('Duration:')[1].strip()
-                            h, m, s = parts.split(':')
-                            video_dur = int(h)*3600 + int(m)*60 + float(s)
-                except Exception:
-                    pass
-
-                if video_dur > audio_dur + 0.5:
-                    # Pad audio with silence to match video
-                    pad_dur = video_dur - audio_dur
-                    cmd.extend(["-af", f"apad=pad_dur={pad_dur:.1f}"])
-                else:
-                    # Video is shorter or equal - use shortest to avoid frozen frames
-                    cmd.append("-shortest")
-            else:
-                cmd.append("-shortest")
-
-            cmd.append(str(temp_output))
-
-            subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            temp_output.replace(video_path)
-            # Clean up trimmed temp file
-            if working_video != video_path:
-                working_video.unlink(missing_ok=True)
-            logger.info(f"Audio merged: {video_path}")
-            return str(video_path)
-        except subprocess.TimeoutExpired:
-            logger.warning("Audio merge timed out, returning video without audio")
-            return str(video_path)
-        except FileNotFoundError as e:
-            logger.warning(f"Audio merge: file not found ({e}). "
-                          f"ffmpeg={self._ffmpeg_path}, "
-                          f"video={working_video}, audio={audio_path}")
-            return str(video_path)
-        except Exception as e:
-            logger.warning(f"Audio merge failed: {e}, returning video without audio")
-            return str(video_path)
+        # Step 2: Delegate rendering to RemotionClient
+        return self.remotion_client.render(
+            plan=plan,
+            filename=filename,
+            audio_path=audio_path,
+            plan_duration=plan_duration,
+        )

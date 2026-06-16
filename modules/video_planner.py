@@ -145,7 +145,7 @@ class VideoPlanner:
             logger.info("Generating video composition plan via LLM...")
             response = self.client.chat.completions.create(
                 model=self.model,
-                max_tokens=2048,
+                max_tokens=4096,
                 temperature=0.7,
                 messages=[
                     {"role": "system", "content": VIDEO_PLANNER_SYSTEM_PROMPT},
@@ -229,7 +229,47 @@ class VideoPlanner:
             if quote_count % 2 != 0:
                 lines[-1] = last.rstrip() + '"'
 
-        return '\n'.join(lines)
+        text = '\n'.join(lines)
+
+        # Fix truncated JSON: close open brackets/braces
+        open_braces = 0
+        open_brackets = 0
+        in_string = False
+        escape_next = False
+        for ch in text:
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == '{':
+                open_braces += 1
+            elif ch == '}':
+                open_braces -= 1
+            elif ch == '[':
+                open_brackets += 1
+            elif ch == ']':
+                open_brackets -= 1
+
+        # Close any open arrays/objects
+        if in_string:
+            text += '"'
+        # Remove trailing incomplete key-value (e.g., "key": without value)
+        text = re.sub(r',\s*"[^"]*":?\s*$', '', text)
+        text = re.sub(r':\s*$', ': null', text)
+        text = re.sub(r',\s*$', '', text)
+        for _ in range(open_brackets):
+            text += ']'
+        for _ in range(open_braces):
+            text += '}'
+
+        return text
 
     _VALID_TYPES = {"title", "text_sequence", "highlight", "bullet_points", "ending"}
     _VALID_ANIMATIONS = {"fade_in", "scale_in", "slide_up", "typewriter", "pulse", "zoom_in", "fade_out"}

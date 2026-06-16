@@ -1,60 +1,46 @@
 {
   "plan": {
-    "title": "想不想用3行代码，搭一个能学习的‘AI大脑’？",
+    "title": "DeepSeek V4 Pro 碾压 GPT-5.5 Pro",
     "theme": "dark_tech",
     "scenes": [
       {
         "type": "title",
-        "text": "想不想用3行代码，搭一个能学习的‘AI大脑’？",
-        "duration": 3.0,
+        "text": "DeepSeek V4 Pro 碾压 GPT-5.5 Pro",
+        "duration": 2.5,
         "animation": "scale_in"
       },
       {
-        "type": "text_sequence",
-        "lines": [
-          "想不想用3行代码，搭一个能学习的‘AI大脑’"
-        ],
-        "duration": 4.2,
-        "animation": "fade_in"
+        "type": "highlight",
+        "text": "精度测试中直接超越！",
+        "duration": 3.0,
+        "animation": "pulse"
       },
       {
         "type": "text_sequence",
         "lines": [
-          "，今天教你用Python实现最简单的神经网络——感知机"
+          "基于 Transformer 优化架构",
+          "和增强数据清洗技术"
         ],
-        "duration": 4.2,
+        "duration": 4.0,
         "animation": "fade_in"
       },
       {
-        "type": "text_sequence",
-        "lines": [
-          "用NumPy库定义权重和偏置，模拟一个神经元如何根据输入做出判断"
+        "type": "bullet_points",
+        "items": [
+          "使用 Hugging Face Transformers 库",
+          "pip install transformers 安装",
+          "加载模型，对比输出"
         ],
-        "duration": 4.2,
-        "animation": "fade_in"
-      },
-      {
-        "type": "text_sequence",
-        "lines": [
-          "跟着做一遍，你就懂了AI决策的底层逻辑，想看完整代码"
-        ],
-        "duration": 4.2,
-        "animation": "fade_in"
-      },
-      {
-        "type": "text_sequence",
-        "lines": [
-          "关注我，从最小的‘大脑’开始，一步步构建你的AI"
-        ],
-        "duration": 4.2,
-        "animation": "fade_in"
+        "duration": 4.5,
+        "animation": "slide_up"
       },
       {
         "type": "ending",
-        "text": "关注我\n获取更多 AI 资讯",
-        "duration": 2.7,
+        "text": "想亲自试试？评论区领测试脚本！关注我，获取更多 AI 干货",
+        "duration": 4.08,
         "animation": "fade_out"
       }
     ]
-  }
+  },
+  "durationInFrames": 572
 }

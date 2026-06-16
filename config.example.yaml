@@ -27,8 +27,9 @@ generation:
   auto_image: true
   # 自动生成视频（抖音等视频平台）
   auto_video: true
-  # 生图/生视频后端选择: dashscope(默认) / modelscope / agnes
+  # 生图后端选择: dashscope(默认) / modelscope / agnes
   image_provider: "dashscope"
+  # 生视频后端选择: dashscope(默认) / modelscope / agnes / remotion(文字动画，免费)
   video_provider: "dashscope"
   # 是否自动给生成的视频添加字幕
   video_subtitles: true
