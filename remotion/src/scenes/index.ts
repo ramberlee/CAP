@@ -4,3 +4,6 @@ export { default as HighlightScene } from "./HighlightScene";
 export { default as ImageTextScene } from "./ImageTextScene";
 export { default as BulletPointsScene } from "./BulletPointsScene";
 export { default as EndingScene } from "./EndingScene";
+export { default as DataCardScene } from "./DataCardScene";
+export { default as ComparisonScene } from "./ComparisonScene";
+export { default as KeywordBurstScene } from "./KeywordBurstScene";

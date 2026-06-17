@@ -1,4 +1,4 @@
-"""Video generation module with DashScope, ModelScope, Agnes and Remotion backends."""
+"""Video generation module with DashScope, Agnes and Remotion backends."""
 
 import logging
 import os
@@ -10,10 +10,9 @@ from pathlib import Path
 import requests
 import dashscope
 from dashscope import VideoSynthesis
-from modules.modelscope_client import ModelScopeClient
 from modules.agnes_client import AgnesClient
 from modules.remotion_client import RemotionClient
-from modules.video_planner import VideoPlanner
+from modules.video_planner import AudioPlanner, VideoPlanner
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,8 @@ def _find_ffmpeg() -> str:
 
 class VideoGenerator:
     def __init__(self, config: dict):
-        # Determine provider: "dashscope" (default), "modelscope", "agnes", or "remotion"
+        self.config = config
+        # Determine provider: "dashscope" (default), "agnes", or "remotion"
         gen_config = config.get("generation", {})
         self.provider = gen_config.get("video_provider", "dashscope")
 
@@ -48,11 +48,7 @@ class VideoGenerator:
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize provider-specific client
-        if self.provider == "modelscope":
-            self.ms_client = ModelScopeClient(config)
-            self.remotion_client = None
-            logger.info(f"VideoGenerator using ModelScope backend (model: {self.ms_client.video_model})")
-        elif self.provider == "agnes":
+        if self.provider == "agnes":
             self.agnes_client = AgnesClient(config)
             self.remotion_client = None
             logger.info(f"VideoGenerator using Agnes AI backend (model: {self.agnes_client.video_model})")
@@ -62,15 +58,20 @@ class VideoGenerator:
         else:
             self.remotion_client = None
 
-        # Video planner (used by remotion provider)
-        self.planner = VideoPlanner(config) if self.provider == "remotion" else None
+        # Video and audio planners (used by remotion provider)
+        if self.provider == "remotion":
+            self.audio_planner = AudioPlanner(config)
+            self.planner = VideoPlanner(config)
+        else:
+            self.audio_planner = None
+            self.planner = None
 
         gen_config = config.get("generation", {})
         self.video_subtitles = gen_config.get("video_subtitles", True)
         self.subtitle_font = gen_config.get("video_subtitle_font", "Microsoft YaHei")
         self.subtitle_fontsize = gen_config.get("video_subtitle_size", 48)
         self.subtitle_line_chars = gen_config.get("video_subtitle_line_chars", 16)
-        self.subtitle_max_lines = gen_config.get("video_subtitle_max_lines", 2)
+        self.subtitle_max_lines = gen_config.get("video_subtitle_max_lines", 1)
 
         # CapCut Mate-inspired subtitle style options
         self.subtitle_text_color = gen_config.get("video_subtitle_text_color", "#FFFFFF")
@@ -177,7 +178,7 @@ class VideoGenerator:
     def _pick_api_duration(audio_duration: float, supported: list[int] | None = None) -> int:
         """Pick the smallest supported API duration that covers the audio.
 
-        DashScope/ModelScope video APIs only accept fixed duration values.
+        DashScope/Agnes video APIs only accept fixed duration values.
         This ensures the video is at least as long as the audio.
         """
         if supported is None:
@@ -214,9 +215,6 @@ class VideoGenerator:
                 plan=plan,
                 scene_timings=scene_timings,
             )
-
-        if self.provider == "modelscope":
-            return self._generate_modelscope(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration, scene_timings=scene_timings)
 
         if self.provider == "agnes":
             return self._generate_agnes(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration, scene_timings=scene_timings)
@@ -312,20 +310,6 @@ class VideoGenerator:
                        f"audio={audio_duration:.1f}s — using video duration for subtitles")
 
         return self._burn_subtitles(video_path, subtitles, keywords, subtitle_duration, scene_timings)
-
-    def _generate_modelscope(self, prompt: str, filename: str, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None, scene_timings: list[dict] | None = None) -> str | None:
-        """Generate video using ModelScope API."""
-        logger.info(f"Generating video via ModelScope: {prompt[:80]}...")
-        api_duration = self._pick_api_duration(audio_duration or self.duration)
-        video_path = self.ms_client.generate_video(
-            prompt=prompt,
-            filename=filename,
-            size=self.size,
-            duration=api_duration,
-        )
-        if video_path:
-            return self._finalize_video(video_path, subtitles, keywords, audio_duration, scene_timings)
-        return None
 
     def _generate_agnes(self, prompt: str, filename: str, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None, scene_timings: list[dict] | None = None) -> str | None:
         """Generate video using Agnes AI API."""
@@ -728,7 +712,7 @@ class VideoGenerator:
                 balanced.append(lines[i])
                 i += 1
 
-        return balanced
+        return [re.sub(r"[，。！？、；：,;!?]", "", line).strip() for line in balanced]
 
     @staticmethod
     def _format_ass_timestamp(seconds: float) -> str:
@@ -842,6 +826,45 @@ class VideoGenerator:
             logger.error(f"Video download failed: {e}")
             return None
 
+    def _resolve_scene_images(self, plan: dict, filename: str) -> None:
+        """Search and download images for any scene with an 'image_query' field.
+
+        The LLM can assign image_query to ANY scene type (hook, highlight,
+        data_card, ending, etc.) — not just image_text. Each scene with
+        an image_query gets a background image downloaded and set as imagePath.
+        """
+        scenes = plan.get("scenes", [])
+        image_scenes = [
+            (i, s) for i, s in enumerate(scenes)
+            if s.get("image_query") and isinstance(s.get("image_query"), str) and s["image_query"].strip()
+        ]
+
+        if not image_scenes:
+            return
+
+        try:
+            from modules.image_search import get_searcher
+            searcher = get_searcher(self.config)
+        except Exception as e:
+            logger.warning(f"Image search module not available: {e}")
+            return
+
+        base_name = Path(filename).stem
+        for i, scene in image_scenes:
+            query = scene["image_query"].strip()
+
+            logger.info(f"Searching image for scene {i} ({scene.get('type')}): '{query}'")
+            img_filename = f"{base_name}_scene_{i}"
+            path = searcher.search_and_download(query, img_filename)
+
+            if path:
+                file_url = path.resolve().as_uri()
+                scene["imagePath"] = file_url
+                logger.info(f"Image resolved for scene {i}: {file_url}")
+            else:
+                logger.warning(f"Failed to find image for scene {i} query '{query}'")
+                # scene will use its normal background (no imagePath)
+
     def _generate_remotion(
         self,
         script: str,
@@ -885,6 +908,9 @@ class VideoGenerator:
 
         # Calculate actual video duration from plan scenes
         plan_duration = sum(s.get("duration", 3) for s in plan.get("scenes", []))
+
+        # Step 1.5: Resolve images for image_text scenes
+        self._resolve_scene_images(plan, filename)
 
         # Ensure video duration matches audio exactly.
         # With per-scene TTS, audio includes inter-scene gaps (~0.15s each)

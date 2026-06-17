@@ -91,9 +91,8 @@ CAP - Content Auto Pipeline（内容自动生产线）
 
 #### FR-2.2.3 AI 配图生成
 - **描述**: 自动识别正文中的 `[IMAGE:description]` 占位符，调用 AI 模型生成配图
-- **后端选择**: 支持 DashScope 和 ModelScope 两种后端，通过 `generation.image_provider` 配置切换
+- **后端选择**: 支持 DashScope 和 Agnes AI 两种后端，通过 `generation.image_provider` 配置切换
 - **DashScope 模型**: qwen-image-2.0-pro（可配置）
-- **ModelScope 模型**: wanx-community/wanx-v1（可配置）
 - **图片分辨率**: 1472x1104（可配置）
 - **图片风格**: 立体/创意/2.5D 插画风格
 - **处理流程**: 识别占位符 → 生成图片 → 保存到 `output/{platform}/media/` → 替换为 `![配图](media/xxx.png)`
@@ -101,15 +100,14 @@ CAP - Content Auto Pipeline（内容自动生产线）
 
 #### FR-2.2.5 AI 视频生成（抖音）
 - **描述**: 自动识别抖音脚本中的 `[VIDEO:description]` 占位符，先调用 TTS 生成口播音频，再调用文生视频模型生成带配音的视频
-- **后端选择**: 支持 DashScope 和 ModelScope 两种后端，通过 `generation.video_provider` 配置切换
+- **后端选择**: 支持 DashScope、Agnes AI 和 Remotion 三种后端，通过 `generation.video_provider` 配置切换
 - **TTS 模型**: mimo-v2.5-tts（OpenAI 兼容接口，可配置）
 - **DashScope 视频模型**: wan2.7-t2v-turbo（可配置，支持 wan2.7-t2v-plus）
-- **ModelScope 视频模型**: Wan-AI/Wan2.1-T2V-14B（可配置）
 - **视频分辨率**: 1280x720（可配置）
 - **视频时长**: 15秒（可配置）
 - **处理流程**:
   - DashScope: 提取口播文字 → TTS 生成音频(.mp3) → 上传音频到 DashScope OSS → 文生视频模型接收 prompt + audio_url → 生成带配音视频
-  - ModelScope: 提取口播文字 → 文生视频模型接收 prompt → 生成视频（不支持音频同步）
+  - Agnes AI / Remotion: 参见各后端具体实现
 - **可选开关**: `config.yaml` 中 `generation.auto_video: true/false`
 
 #### FR-2.2.4 内容文件存储
@@ -248,7 +246,7 @@ CAP - Content Auto Pipeline（内容自动生产线）
 |------|----------|
 | CLI 框架 | Typer + Rich |
 | AI 内容生成 | MiMo API（OpenAI 兼容） |
-| AI 配图 | 阿里云百炼 DashScope SDK / ModelScope API |
+| AI 配图 | 阿里云百炼 DashScope SDK / Agnes AI |
 | Markdown 渲染 | markdown-it-py |
 | HTML 处理 | BeautifulSoup4 |
 | 浏览器自动化 | Playwright |
@@ -317,8 +315,8 @@ generation:         # 内容生成参数
   temperature:      # 温度参数
   auto_image:       # 是否自动生成配图
   auto_video:       # 是否自动生成视频（抖音等视频平台）
-  image_provider:   # 生图后端: dashscope(默认) / modelscope
-  video_provider:   # 生视频后端: dashscope(默认) / modelscope
+  image_provider:   # 生图后端: dashscope(默认) / agnes
+  video_provider:   # 生视频后端: dashscope(默认) / agnes / remotion
 
 dashscope:          # 阿里云百炼配置
   api_key:          # API 密钥
@@ -328,12 +326,6 @@ dashscope:          # 阿里云百炼配置
   video_model:      # 文生视频模型 (wan2.7-t2v-turbo / wan2.7-t2v-plus)
   video_size:       # 视频分辨率
   video_duration:   # 视频时长(秒)
-
-modelscope:         # ModelScope API 配置（可选，替代 DashScope）
-  api_token:        # ModelScope Access Token
-  image_model:      # 文生图模型 (wanx-community/wanx-v1)
-  video_model:      # 文生视频模型 (Wan-AI/Wan2.1-T2V-14B)
-  media_dir:        # 媒体文件保存目录
 
 monitor:            # 热点采集配置
   max_topics:       # 每个数据源最大采集数
@@ -397,7 +389,6 @@ logging:            # 日志配置
 |------|------|--------|
 | MiMo API | AI 内容生成 + TTS 语音合成 | `mimo.api_key` |
 | 阿里云百炼 | AI 配图生成 + 视频生成（默认后端） | `dashscope.api_key` |
-| ModelScope API | AI 配图生成 + 视频生成（可选后端） | `modelscope.api_token` |
 | 微信公众号 API | 草稿发布 | `platforms.wechat.app_id/secret` |
 | 今日头条 | 社会热点数据源(道) | 无需配置 |
 | 36kr | AI技术热点数据源(术) | 无需配置 |

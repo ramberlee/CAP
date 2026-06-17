@@ -44,19 +44,122 @@ class DouyinPublisher:
                 return p
         return None
 
-    def _wait_for_upload(self, page, timeout: int = 120) -> bool:
-        for i in range(timeout):
+    def _wait_for_upload(self, page, timeout: int = 180) -> bool:
+        """Wait for video upload to complete on Douyin Creator.
+
+        Douyin shows a progress bar during upload. The publish button may be
+        visible from the start but the upload must finish before proceeding.
+        We wait for the upload progress UI to appear and then disappear.
+        """
+        logger.info("  Waiting for video upload to complete...")
+
+        # Phase 1: Wait for upload progress to appear (upload has started)
+        progress_seen = False
+        for i in range(15):
             time.sleep(1)
-            if i % 10 == 0:
-                logger.info(f"  Waiting for upload... ({i}s)")
             try:
-                btn = page.get_by_role("button", name="发布", exact=True)
-                if btn.is_visible(timeout=1000):
-                    logger.info(f"Upload complete after {i}s")
-                    return True
-            except:
+                progress = page.locator('[class*="progress"]')
+                if progress.count() > 0:
+                    logger.info("  Upload progress detected, waiting for completion...")
+                    progress_seen = True
+                    break
+            except Exception:
                 pass
-        logger.warning(f"Upload wait timed out after {timeout}s")
+
+        if not progress_seen:
+            logger.debug("  No progress bar found after 15s, upload may be fast or UI changed")
+
+        # Phase 2: Wait for progress to DISAPPEAR (upload complete)
+        # Minimum wait: 5s even if no progress detected
+        min_wait = 5
+        waited = 0
+        while waited < timeout:
+            time.sleep(1)
+            waited += 1
+
+            if waited % 15 == 0:
+                logger.info(f"  Still waiting for upload... ({waited}s)")
+
+            # Check if progress element has disappeared
+            try:
+                progress = page.locator('[class*="progress"]')
+                if progress_seen and progress.count() == 0 and waited >= min_wait:
+                    time.sleep(2)  # Settle
+                    logger.info(f"  Upload complete after {waited}s (progress disappeared)")
+                    return True
+            except Exception:
+                pass
+
+            # Fallback: check for video preview/thumbnail (indicates upload done)
+            if waited >= min_wait:
+                try:
+                    preview = page.locator('video, [class*="preview"], [class*="cover"], [class*="thumbnail"]')
+                    if preview.count() > 0:
+                        time.sleep(2)
+                        logger.info(f"  Upload complete after {waited}s (preview detected)")
+                        return True
+                except Exception:
+                    pass
+
+        logger.warning(f"  Upload wait timed out after {waited}s — proceeding anyway")
+        return True
+
+    def _check_login(self, page) -> bool:
+        """Check if the user is logged in to Douyin Creator.
+
+        Uses multiple signals instead of a fragile URL check.
+        Returns True if logged in, False otherwise.
+        """
+        # Signal 1: Known login page URLs
+        login_url_patterns = ["login", "passport", "verify", "captcha"]
+        current_url = page.url.lower()
+        for pattern in login_url_patterns:
+            if pattern in current_url:
+                logger.info(f"Login page detected via URL pattern: '{pattern}'")
+                return False
+
+        # Signal 2: Login form elements (password input, SMS/phone login form)
+        # Use specific, narrow selectors — avoid broad class matches
+        login_selectors = [
+            'input[type="password"]',
+            'input[placeholder*="密码"]',
+            'input[placeholder*="手机号"]',
+            'button:has-text("登录")',
+            '[class*="login-modal"]',
+            '[class*="LoginModal"]',
+        ]
+        for sel in login_selectors:
+            try:
+                if page.locator(sel).count() > 0:
+                    logger.debug(f"Login indicator found: {sel}")
+                    return False
+            except Exception:
+                pass
+
+        # Signal 3: Logged-in indicators (upload page content, user nav)
+        logged_in_selectors = [
+            'input[type="file"]',
+            '[class*="upload"]',
+            '[class*="header"]',
+            '[class*="nav"]',
+        ]
+        found_indicators = 0
+        for sel in logged_in_selectors:
+            try:
+                if page.locator(sel).count() > 0:
+                    found_indicators += 1
+            except Exception:
+                pass
+
+        # Need at least 2 logged-in indicators to confirm
+        if found_indicators >= 2:
+            return True
+
+        # Uncertain — check if we're on the upload page at all
+        if "creator" in current_url and "upload" in current_url:
+            logger.info("On upload page, assuming logged in (no login indicators found)")
+            return True
+
         return False
 
     def _clean_script(self, script_text: str) -> str:
@@ -78,44 +181,107 @@ class DouyinPublisher:
         page.wait_for_load_state("networkidle")
         time.sleep(2)
 
+        # Re-verify login state before upload
+        if not self._check_login(page):
+            return {"success": False, "error": "Login expired — run: python tools/douyin_login.py"}
+
         # Upload video
         try:
             file_input = page.locator('input[type="file"]').first
             file_input.set_input_files(str(video_path))
-            self._wait_for_upload(page, timeout=120)
-            time.sleep(2)
+            logger.info(f"  Video file selected: {video_path.name}")
         except Exception as e:
-            return {"success": False, "error": f"Upload failed: {e}"}
+            return {"success": False, "error": f"File selection failed: {e}"}
 
-        # Fill description
+        # Wait for upload to complete
+        if not self._wait_for_upload(page, timeout=180):
+            logger.warning("  Upload may not have completed, proceeding anyway...")
+
+        time.sleep(2)
+
+        # Fill description — use short description if available, otherwise truncate
         script_text = content.get("body", content.get("script", ""))
-        tags_str = " ".join(content.get("tags", []))
-        clean_script = self._clean_script(script_text)
-        full_text = f"{title}\n\n{clean_script}\n\n{tags_str}".strip()
+        description = content.get("description", "")
+        # Douyin only supports up to 5 tags
+        tags = content.get("tags", [])[:5]
+        tags_str = " ".join(tags)
+
+        if description:
+            # Use LLM-generated short description
+            full_text = f"{description}\n\n{tags_str}".strip()
+        else:
+            # Fallback: use title + truncated script + tags
+            title = content.get("title", "")
+            clean_script = self._clean_script(script_text)
+            # Truncate to ~100 chars max for Douyin caption
+            if len(clean_script) > 100:
+                clean_script = clean_script[:97] + "..."
+            full_text = f"{title}\n{clean_script}\n{tags_str}".strip()
+
+        logger.info(f"  Description: {full_text[:60]}...")
 
         try:
-            desc_inputs = page.locator('[contenteditable="true"]')
-            if desc_inputs.count() > 0:
-                desc_inputs.first.fill(full_text)
-                logger.info(f"  Description filled ({len(full_text)} chars)")
+            # Try multiple selectors for the description field
+            desc_selectors = [
+                '[contenteditable="true"]',
+                '[class*="notranslate"]',
+                '.public-DraftEditor-content',
+                '[data-text="true"]',
+                '[class*="desc"]',
+                '[placeholder*="描述"]',
+                '[placeholder*="添加"]',
+                '[class*="content"]',
+                'textarea',
+                '[role="textbox"]',
+            ]
+            filled = False
+            for sel in desc_selectors:
+                try:
+                    el = page.locator(sel).first
+                    if el.count() > 0 and el.is_visible():
+                        el.click()
+                        time.sleep(0.5)
+                        # Clear existing content
+                        el.fill("")
+                        # Type content with human-like delay for React state sync
+                        el.type(full_text, delay=50)
+                        logger.info(f"  Description filled via '{sel}' ({len(full_text)} chars)")
+                        filled = True
+                        break
+                except Exception:
+                    continue
+
+            if not filled:
+                logger.warning(f"  Could not fill description — no matching input found")
         except Exception as e:
             logger.warning(f"  Could not fill description: {e}")
 
-        time.sleep(1)
+        time.sleep(2)
 
         # Click publish
         try:
             publish_btn = page.get_by_role("button", name="发布", exact=True)
-            publish_btn.wait_for(state="visible", timeout=10000)
+            publish_btn.wait_for(state="visible", timeout=15000)
+            time.sleep(1)
+
+            if not publish_btn.is_enabled():
+                logger.warning("  Publish button is disabled — waiting...")
+                page.wait_for_timeout(5000)
+                if not publish_btn.is_enabled():
+                    return {"success": False, "error": "Publish button remains disabled"}
+
             publish_btn.click()
             logger.info("  Publish button clicked!")
 
-            # Wait for CAPTCHA/verification/redirect
+            # Handle potential post-publish dialogs (content declaration, copyright, etc.)
+            self._handle_post_publish_dialogs(page)
+
+            # Wait for verification/redirect
             logger.info(f"  Waiting {self.post_publish_wait}s for verification/redirect...")
             page.wait_for_timeout(self.post_publish_wait * 1000)
 
             final_url = page.url
-            if "manage" in final_url or "success" in final_url:
+            if "manage" in final_url or "success" in final_url or "content" in final_url:
                 logger.info(f"  Published! -> {final_url}")
             else:
                 logger.info(f"  Final URL: {final_url}")
@@ -124,6 +290,41 @@ class DouyinPublisher:
 
         except Exception as e:
             return {"success": False, "error": f"Publish click failed: {e}"}
+
+    def _handle_post_publish_dialogs(self, page):
+        """Handle dialogs that may appear after clicking publish.
+
+        Douyin may show:
+        - Content declaration (原创声明)
+        - Copyright confirmation
+        - Category/tag selection
+        - Captcha verification
+        """
+        time.sleep(3)
+
+        # Content declaration dialog — usually has "确认" or "同意" buttons
+        confirm_texts = ["确认", "同意", "知道了", "发布", "提交", "确定"]
+        for text in confirm_texts:
+            try:
+                btn = page.get_by_role("button", name=text)
+                if btn.count() > 0 and btn.is_visible():
+                    logger.info(f"  Handling dialog: clicking '{text}'")
+                    btn.click()
+                    time.sleep(2)
+            except Exception:
+                pass
+
+        # Check for checkbox agreements
+        try:
+            checkboxes = page.locator('input[type="checkbox"]')
+            for i in range(checkboxes.count()):
+                cb = checkboxes.nth(i)
+                if cb.is_visible() and not cb.is_checked():
+                    cb.check()
+                    logger.info("  Checked agreement checkbox")
+                    time.sleep(0.5)
+        except Exception:
+            pass
 
     def publish(self, content: dict) -> dict:
         """Publish a single content item (opens/closes browser)."""
@@ -151,15 +352,33 @@ class DouyinPublisher:
 
                 self._load_cookies(context)
 
-                # Navigate to creator center to check login
+                # Navigate to creator center and check login status
                 page.goto(UPLOAD_URL)
                 page.wait_for_load_state("networkidle")
-                time.sleep(2)
+                time.sleep(3)
 
-                if "login" in page.url.lower():
-                    logger.error("Not logged in. Run: python tools/douyin_login.py")
+                # Try up to 2 times — cookies might trigger a redirect
+                for attempt in range(2):
+                    if self._check_login(page):
+                        break
+                    if attempt == 0:
+                        logger.info("Login not detected on first attempt, waiting for possible redirect...")
+                        page.wait_for_timeout(5000)
+                        # Reload to trigger cookie-based auth
+                        page.goto(UPLOAD_URL)
+                        page.wait_for_load_state("networkidle")
+                        time.sleep(2)
+
+                if not self._check_login(page):
+                    current_url = page.url
+                    logger.error(
+                        f"Not logged in to Douyin Creator.\n"
+                        f"  Current URL: {current_url}\n"
+                        f"  Please run: python tools/douyin_login.py\n"
+                        f"  Then try publishing again."
+                    )
                     browser.close()
-                    return [{"success": False, "error": "Not logged in"} for _ in contents]
+                    return [{"success": False, "error": "Not logged in — run: python tools/douyin_login.py"} for _ in contents]
 
                 logger.info(f"Browser ready, publishing {len(contents)} items...")
 

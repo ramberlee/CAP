@@ -8,6 +8,9 @@ import {
   ImageTextScene,
   BulletPointsScene,
   EndingScene,
+  DataCardScene,
+  ComparisonScene,
+  KeywordBurstScene,
 } from "./scenes";
 import { CompositionPlan, Scene } from "./types";
 
@@ -84,6 +87,11 @@ const SceneRenderer: React.FC<{
           text={scene.text || ""}
           duration={scene.duration}
           animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
+          imagePath={scene.imagePath}
         />
       );
 
@@ -94,6 +102,11 @@ const SceneRenderer: React.FC<{
           lines={scene.lines || [scene.text || ""]}
           duration={scene.duration}
           animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
+          imagePath={scene.imagePath}
         />
       );
 
@@ -104,6 +117,11 @@ const SceneRenderer: React.FC<{
           text={scene.text || ""}
           duration={scene.duration}
           animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
+          imagePath={scene.imagePath}
         />
       );
 
@@ -115,6 +133,10 @@ const SceneRenderer: React.FC<{
           imagePath={scene.imagePath}
           duration={scene.duration}
           animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
         />
       );
 
@@ -125,6 +147,60 @@ const SceneRenderer: React.FC<{
           items={scene.items || [scene.text || ""]}
           duration={scene.duration}
           animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
+          imagePath={scene.imagePath}
+        />
+      );
+
+    case "data_card":
+      return (
+        <DataCardScene
+          theme={theme}
+          duration={scene.duration}
+          animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
+          visual_label={scene.visual_label}
+          visual_value={scene.visual_value}
+          visual_unit={scene.visual_unit}
+          visual_trend={scene.visual_trend}
+          imagePath={scene.imagePath}
+        />
+      );
+
+    case "comparison":
+      return (
+        <ComparisonScene
+          theme={theme}
+          duration={scene.duration}
+          animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
+          visual_left={scene.visual_left}
+          visual_right={scene.visual_right}
+          imagePath={scene.imagePath}
+        />
+      );
+
+    case "keyword_burst":
+      return (
+        <KeywordBurstScene
+          theme={theme}
+          duration={scene.duration}
+          animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
+          visual_keywords={scene.visual_keywords}
+          imagePath={scene.imagePath}
         />
       );
 
@@ -135,6 +211,11 @@ const SceneRenderer: React.FC<{
           text={scene.text || ""}
           duration={scene.duration}
           animation={scene.animation}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
+          imagePath={scene.imagePath}
         />
       );
 
@@ -144,6 +225,10 @@ const SceneRenderer: React.FC<{
           theme={theme}
           text={scene.text || "Unknown scene type"}
           duration={scene.duration}
+          icon={scene.icon}
+          visualStyle={scene.visual_style}
+          mood={scene.mood}
+          layoutHint={scene.layout_hint}
         />
       );
   }

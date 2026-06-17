@@ -89,6 +89,8 @@ class ContentGenerator:
         """Ensure result has valid tags. Auto-generate from title if empty."""
         tags = result.get("tags", [])
         if tags:
+            # Limit to 5 max (Douyin constraint, safe for all platforms)
+            result["tags"] = tags[:5]
             return
 
         title = result.get("title", "")
@@ -362,23 +364,87 @@ class ContentGenerator:
             logger.warning(f"Voice prompt generation failed: {e}")
             return None
 
-    def _generate_tts_per_scene(self, plan: dict, content_id: int, output_media: Path, max_total_duration: float = 60, voice_prompt: str | None = None) -> tuple[str | None, float | None, list[dict]]:
-        """Generate TTS audio per-scene for precise synchronization.
+    def _generate_tts_from_audio_plan(
+        self,
+        audio_plan: dict,
+        content_id: int,
+        output_media: Path,
+        voice_prompt: str | None = None,
+    ) -> tuple[str | None, float | None, list[dict]]:
+        """Generate TTS audio from AudioPlanner segments for precise sync.
 
-        Instead of one big TTS call, generates audio for each scene individually,
-        measures actual duration, then concatenates. Returns timing data that
-        matches the real speech rhythm.
-
-        Args:
-            plan: Composition plan with scenes (each scene has text/lines/items).
-            content_id: Content ID for filename generation.
-            output_media: Output directory for audio files.
-            max_total_duration: Maximum total audio duration.
-            voice_prompt: Optional voice prompt for T tone consistency.
+        Each segment in the audio plan is synthesized individually, then all
+        WAVs are concatenated. Returns precise timing data keyed to segments.
 
         Returns:
-            (audio_path, total_duration, scene_timings) where scene_timings is a list of
-            dicts with keys: text, start, end (in seconds).
+            (concat_audio_path, total_duration, segment_timings)
+            where segment_timings is [{text, start, end}, ...]
+        """
+        if not self.tts or not audio_plan.get("segments"):
+            return None, None, []
+
+        segments = audio_plan["segments"]
+        seg_audio_paths = []
+        seg_durations = []
+        seg_texts = []
+        pauses = []  # pause_after per segment
+
+        for i, seg in enumerate(segments):
+            seg_text = seg.get("text", "").strip()
+            pause = seg.get("pause_after", 0.2)
+            if not seg_text:
+                seg_durations.append(0.0)
+                seg_texts.append("")
+                pauses.append(0.0)
+                continue
+
+            audio_filename = f"content_{content_id}_audio_seg_{i}.wav"
+            tts_result = self.tts.synthesize(
+                seg_text, audio_filename,
+                max_duration=30, voice_prompt=voice_prompt,
+            )
+            if tts_result:
+                audio_path, duration, _ = tts_result
+                seg_audio_paths.append(audio_path)
+                seg_durations.append(duration)
+            else:
+                seg_durations.append(0.0)
+            seg_texts.append(seg_text)
+            pauses.append(pause)
+
+        if not seg_audio_paths:
+            return None, None, []
+
+        # Concatenate with the pauses specified by AudioPlanner
+        concat_filename = f"content_{content_id}_tts.wav"
+        concat_path = str(output_media / concat_filename)
+        from modules.tts import TTSSynthesizer
+        # Use per-segment pauses (AudioPlanner-specified) instead of fixed 0.15s
+        TTSSynthesizer.concat_wav_files(
+            seg_audio_paths, concat_path,
+            gap_seconds=0.0,  # pauses are baked into segment texts or handled below
+        )
+
+        # Build timing data with specified pauses
+        segment_timings = []
+        current_time = 0.0
+        for i, (duration, text) in enumerate(zip(seg_durations, seg_texts)):
+            if duration > 0:
+                start = current_time
+                end = current_time + duration
+                segment_timings.append({"text": text, "start": round(start, 2), "end": round(end, 2)})
+                current_time = end + pauses[i]
+            else:
+                segment_timings.append({"text": text, "start": round(current_time, 2), "end": round(current_time, 2)})
+
+        total_duration = TTSSynthesizer.get_audio_duration(concat_path)
+        logger.info(f"Audio-plan TTS: {len(seg_audio_paths)} segments, {total_duration:.1f}s total")
+        return concat_path, total_duration, segment_timings
+
+    def _generate_tts_per_scene(self, plan: dict, content_id: int, output_media: Path, max_total_duration: float = 60, voice_prompt: str | None = None) -> tuple[str | None, float | None, list[dict]]:
+        """[DEPRECATED] Legacy per-scene TTS from plan scenes.
+
+        Kept as fallback when AudioPlanner is unavailable.
         """
         if not self.tts or not plan.get("scenes"):
             return None, None, []
@@ -388,9 +454,7 @@ class ContentGenerator:
         scene_durations = []
         scene_texts = []
 
-        # Generate TTS for each scene
         for i, scene in enumerate(scenes):
-            # Extract speakable text from scene
             scene_text = self._extract_scene_text(scene)
             if not scene_text:
                 scene_durations.append(0.0)
@@ -411,13 +475,11 @@ class ContentGenerator:
         if not scene_audio_paths:
             return None, None, []
 
-        # Concatenate all scene audio files
         concat_filename = f"content_{content_id}_tts.wav"
         concat_path = str(output_media / concat_filename)
         from modules.tts import TTSSynthesizer
         TTSSynthesizer.concat_wav_files(scene_audio_paths, concat_path, gap_seconds=0.15)
 
-        # Build timing data
         scene_timings = []
         current_time = 0.0
         gap = 0.15
@@ -426,12 +488,12 @@ class ContentGenerator:
                 start = current_time
                 end = current_time + duration
                 scene_timings.append({"text": text, "start": round(start, 2), "end": round(end, 2)})
-                current_time = end + gap  # gap between scenes
+                current_time = end + gap
             else:
                 scene_timings.append({"text": text, "start": round(current_time, 2), "end": round(current_time, 2)})
 
         total_duration = TTSSynthesizer.get_audio_duration(concat_path)
-        logger.info(f"Per-scene TTS: {len(scene_audio_paths)} scenes, {total_duration:.1f}s total")
+        logger.info(f"Per-scene TTS (legacy): {len(scene_audio_paths)} scenes, {total_duration:.1f}s total")
         return concat_path, total_duration, scene_timings
 
     def _extract_scene_text(self, scene: dict) -> str:
@@ -525,7 +587,7 @@ class ContentGenerator:
 
         Two paths based on video provider:
         - Remotion: uses script text directly with video_planner → text-based animation
-        - Text-to-video (DashScope/ModelScope/Agnes): generates cinematic video description
+        - Text-to-video (DashScope/Agnes): generates cinematic video description
           via dedicated video template, then calls the video generation API
 
         Returns (processed_body, list_of_local_video_paths).
@@ -553,24 +615,27 @@ class ContentGenerator:
 
         is_remotion = getattr(self.vgen, 'provider', 'dashscope') == 'remotion'
 
-        # --- Remotion flow: plan first, then TTS from plan ---
-        if is_remotion and self.vgen and self.vgen.planner:
-            logger.info("Generating video composition plan (Remotion)...")
-            video_plan = self.vgen.planner.plan(
+        # ── Remotion flow: Audio plan first → TTS → Video plan ──
+        audio_plan = None    # AudioPlanner output
+        audio_segments = []  # raw segments from audio plan
+        if is_remotion and self.vgen and self.vgen.audio_planner:
+            logger.info("Step 1/3: Generating audio narration plan (AudioPlanner)...")
+            audio_plan = self.vgen.audio_planner.plan(
                 script=script_text,
                 title=topic_title,
                 tags=tags,
-                total_duration=None,  # LLM decides duration (~25-30s)
             )
-            if video_plan:
-                audio_script = self.vgen.planner.get_audio_script(video_plan)
-                logger.info(f"Video plan: {len(video_plan.get('scenes', []))} scenes, "
-                           f"audio: {audio_script[:60]}...")
-                if audio_script:
-                    script_text = audio_script
-                    subtitle_text = audio_script
+            if audio_plan:
+                narration = audio_plan.get("narration", "")
+                voice_direction = audio_plan.get("voice_direction", "")
+                audio_segments = audio_plan.get("segments", [])
+                logger.info(f"Audio plan: {len(audio_segments)} segments, "
+                           f"voice_direction={voice_direction[:40] if voice_direction else 'N/A'}")
+                if narration:
+                    script_text = narration
+                    subtitle_text = narration
             else:
-                logger.warning("Plan generation failed, falling back to raw script for TTS")
+                logger.warning("AudioPlan failed, falling back to raw script TTS")
 
         # --- TTS audio generation ---
         audio_oss_url = None
@@ -580,12 +645,51 @@ class ContentGenerator:
         use_audio_sync = self.tts is not None
 
         if use_audio_sync:
-            # Generate voice prompt dynamically based on content
-            voice_prompt = self._generate_voice_prompt(script_text, category)
+            # Voice prompt: use AudioPlanner direction for Remotion, LLM-generated otherwise
+            if is_remotion and audio_plan:
+                voice_prompt = audio_plan.get("voice_direction")
+            else:
+                voice_prompt = self._generate_voice_prompt(script_text, category)
 
-            if is_remotion and video_plan and video_plan.get("scenes"):
-                # --- Remotion: per-scene TTS for precise sync ---
-                logger.info("Generating per-scene TTS for precise audio/video sync...")
+            if is_remotion and audio_plan and audio_plan.get("segments"):
+                # ── Remotion: per-segment TTS from AudioPlanner ──
+                logger.info("Step 2/3: Generating per-segment TTS from audio plan...")
+                concat_path, total_duration, scene_timings = self._generate_tts_from_audio_plan(
+                    audio_plan, content_id, output_media, voice_prompt=voice_prompt
+                )
+                if concat_path and total_duration:
+                    audio_path = concat_path
+                    audio_duration = total_duration
+                    src_audio = Path(audio_path)
+                    dst_audio = output_media / src_audio.name
+                    import time
+                    for _retry in range(5):
+                        try:
+                            shutil.copy2(src_audio, dst_audio)
+                            break
+                        except PermissionError:
+                            time.sleep(1.0)
+                    else:
+                        dst_audio.write_bytes(src_audio.read_bytes())
+
+                    # Step 3/3: Generate video plan with measured audio timings
+                    logger.info("Step 3/3: Generating visual composition plan (VideoPlanner)...")
+                    video_plan = self.vgen.planner.plan(
+                        script=script_text,
+                        title=topic_title,
+                        tags=tags,
+                        audio_timings=scene_timings,
+                    )
+                    if video_plan:
+                        plan_dur = sum(s.get("duration", 0) for s in video_plan["scenes"])
+                        logger.info(f"Video plan with audio sync: {len(video_plan['scenes'])} scenes, "
+                                   f"plan={plan_dur:.1f}s, audio={audio_duration:.1f}s")
+                    else:
+                        logger.warning("VideoPlanner failed after TTS, plan will be None")
+
+            elif is_remotion and video_plan and video_plan.get("scenes"):
+                # ── Legacy fallback: per-scene TTS from old plan ──
+                logger.info("Generating per-scene TTS for precise audio/video sync (legacy)...")
                 concat_path, total_duration, scene_timings = self._generate_tts_per_scene(
                     video_plan, content_id, output_media, max_total_duration=60, voice_prompt=voice_prompt
                 )
@@ -594,18 +698,22 @@ class ContentGenerator:
                     audio_duration = total_duration
                     src_audio = Path(audio_path)
                     dst_audio = output_media / src_audio.name
-                    shutil.copy2(src_audio, dst_audio)
+                    import time
+                    for _retry in range(5):
+                        try:
+                            shutil.copy2(src_audio, dst_audio)
+                            break
+                        except PermissionError:
+                            time.sleep(1.0)
+                    else:
+                        dst_audio.write_bytes(src_audio.read_bytes())
 
-                    # Update plan scene durations with measured TTS durations.
-                    # Do NOT normalize — per-scene TTS durations are the ground truth.
-                    # The small gap between scenes (~0.15s each) will be handled by
-                    # _merge_audio's extend-last-scene logic.
                     for i, timing in enumerate(scene_timings):
                         if i < len(video_plan["scenes"]) and timing["end"] > timing["start"]:
                             video_plan["scenes"][i]["duration"] = round(timing["end"] - timing["start"], 2)
 
                     plan_dur = sum(s.get("duration", 0) for s in video_plan["scenes"])
-                    logger.info(f"Plan durations from TTS: {plan_dur:.1f}s (audio: {audio_duration:.1f}s, "
+                    logger.info(f"Plan durations from TTS (legacy): {plan_dur:.1f}s (audio: {audio_duration:.1f}s, "
                                f"gap from {len(scene_timings)} scene pauses)")
             else:
                 # --- Text-to-video: full TTS (audio is source of truth) ---
@@ -755,6 +863,7 @@ class ContentGenerator:
             title = result.get("title", "")
             body = result.get("body", result.get("script", ""))
             tags = result.get("tags", [])
+            description = result.get("description", "")
 
             # Enforce Xiaohongshu limits
             if platform == "xiaohongshu":
@@ -784,6 +893,7 @@ class ContentGenerator:
                 tags=tags,
                 media_urls=media_urls,
                 topic_id=topic_id,
+                description=description,
             )
             file_paths.append(filepath)
 

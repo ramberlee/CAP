@@ -7,8 +7,8 @@
 - **热点采集** - 支持两类热点：「道」社会热点（今日头条）+「术」AI技术热点（36kr、Hacker News），支持分类采集
 - **道与术分类** - 社会热点归「道」、AI技术热点归「术」，自动生成不同定位的内容
 - **AI 内容生成** - 基于 MiMo 大模型，一键生成小红书、微信公众号、抖音三平台内容
-- **AI 配图生成** - 支持阿里云百炼 DashScope 和 ModelScope API 两种后端，自动为文章生成配图
-- **抖音视频生成** - 口播脚本经 MiMo TTS 生成音频，再由文生视频模型生成带配音的短视频（支持 DashScope / ModelScope / Remotion）
+- **AI 配图生成** - 支持阿里云百炼 DashScope 和 Agnes AI 两种后端，自动为文章生成配图
+- **抖音视频生成** - 口播脚本经 MiMo TTS 生成音频，再由文生视频模型生成带配音的短视频（支持 DashScope / Agnes / Remotion）
 - **Remotion 文字视频** - 基于 React 的程序化视频渲染，免费生成文字动画短视频，时长由内容自动决定
 - **文件化存储** - 内容以 Markdown 文件保存在 `output/` 目录，可直接用编辑器修改
 - **微信公众号发布** - 支持草稿箱发布，内置 WeChat-Markdown 排版引擎，多主题切换
@@ -37,11 +37,10 @@ CAP/
 │   ├── content_store.py         # 文件化内容存储
 │   ├── monitor.py               # 热点采集（道：今日头条，术：36kr+HN）
 │   ├── generator.py             # AI 内容生成（MiMo API）
-│   ├── imager.py                # AI 配图生成（DashScope / ModelScope / Agnes）
-│   ├── vgen.py                  # AI 视频生成（DashScope / ModelScope / Agnes / Remotion）
+│   ├── imager.py                # AI 配图生成（DashScope / Agnes）
+│   ├── vgen.py                  # AI 视频生成（DashScope / Agnes / Remotion）
 │   ├── remotion_client.py       # Remotion 视频渲染客户端
 │   ├── video_planner.py         # 视频构图规划（LLM 生成 Remotion 场景计划）
-│   ├── modelscope_client.py     # ModelScope API 统一客户端
 │   ├── agnes_client.py          # Agnes AI API 统一客户端
 │   ├── tts.py                   # TTS 语音合成（MiMo TTS）
 │   ├── publisher.py             # 发布调度器
@@ -103,12 +102,6 @@ dashscope:
 remotion:
   project_dir: "remotion"
   fps: 30
-
-# ModelScope API（可选，替代 DashScope 进行配图/视频生成）
-modelscope:
-  api_token: "your-modelscope-token"      # ModelScope Access Token
-  image_model: "wanx-community/wanx-v1"   # 文生图模型
-  video_model: "Wan-AI/Wan2.1-T2V-14B"   # 文生视频模型
 
 # 热点采集数据源
 monitor:
@@ -199,7 +192,6 @@ python main.py publish -p xiaohongshu
 | 后端 | 说明 | 费用 |
 |------|------|------|
 | `dashscope` | 阿里云百炼 Wan2.7-T2V 文生视频 | 按量计费 |
-| `modelscope` | ModelScope 文生视频 | 免费额度 |
 | `agnes` | Agnes AI 文生视频 | 按量计费 |
 | `remotion` | **推荐** — 程序化文字动画视频，LLM 自动规划场景 | **免费** |
 
@@ -317,11 +309,10 @@ topic_id: 102
 | `modules.database` | SQLite 数据库层（话题增删改查、分类统计） |
 | `modules.monitor` | 热点采集（今日头条/36kr/Hacker News，道/术分类） |
 | `modules.generator` | AI 内容生成（MiMo API，分类模板和提示词） |
-| `modules.imager` | AI 配图生成（DashScope / ModelScope / Agnes 后端） |
-| `modules.vgen` | AI 视频生成（DashScope / ModelScope / Agnes / Remotion 后端，支持音频同步） |
+| `modules.imager` | AI 配图生成（DashScope / Agnes 后端） |
+| `modules.vgen` | AI 视频生成（DashScope / Agnes / Remotion 后端，支持音频同步） |
 | `modules.remotion_client` | Remotion 视频渲染客户端（npx/ffmpeg 管理、渲染、音频合并） |
 | `modules.video_planner` | 视频构图规划（LLM 生成 Remotion 场景计划） |
-| `modules.modelscope_client` | ModelScope API 统一客户端 |
 | `modules.agnes_client` | Agnes AI API 统一客户端 |
 | `modules.tts` | TTS 语音合成（MiMo TTS，口播脚本转音频） |
 | `modules.content_store` | 文件化内容存储（Markdown + YAML frontmatter） |
@@ -331,8 +322,8 @@ topic_id: 102
 
 - **CLI**: Typer + Rich
 - **AI 内容生成**: MiMo API（OpenAI 兼容）
-- **AI 配图**: 阿里云百炼 DashScope SDK / ModelScope API（可切换）
-- **AI 视频生成**: 阿里云百炼 Wan2.7-T2V / ModelScope API / Agnes AI / Remotion（可切换）
+- **AI 配图**: 阿里云百炼 DashScope SDK / Agnes AI（可切换）
+- **AI 视频生成**: 阿里云百炼 Wan2.7-T2V / Agnes AI / Remotion（可切换）
 - **Remotion 视频渲染**: React + Remotion 框架，程序化文字动画视频（免费，推荐）
 - **TTS 语音合成**: MiMo TTS（OpenAI 兼容）
 - **Markdown 渲染**: markdown-it-py + BeautifulSoup4

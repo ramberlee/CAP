@@ -1,46 +1,112 @@
 {
   "plan": {
-    "title": "DeepSeek V4 Pro 碾压 GPT-5.5 Pro",
-    "theme": "dark_tech",
+    "concept": "算法对消费决策的隐秘操控",
+    "theme": "vibrant",
     "scenes": [
       {
-        "type": "title",
-        "text": "DeepSeek V4 Pro 碾压 GPT-5.5 Pro",
-        "duration": 2.5,
-        "animation": "scale_in"
+        "id": 1,
+        "audio_segment": "段1: 0.0s - 1.8s",
+        "duration": 1.76,
+        "type": "hook",
+        "text": "5月 | 数据爆",
+        "visual_style": "explosive, digital, bold",
+        "mood": "urgent",
+        "layout_hint": "spotlight center",
+        "icon": "chart-line-up",
+        "animation": "zoom_in",
+        "notes": "大字“5月”与“数据爆”分两行居中，数字“5”做金属光效，箭头向上冲击。"
       },
       {
-        "type": "highlight",
-        "text": "精度测试中直接超越！",
-        "duration": 3.0,
-        "animation": "pulse"
+        "id": 2,
+        "audio_segment": "段2: 2.1s - 4.6s",
+        "duration": 2.56,
+        "type": "comparison",
+        "visual_left": "人（手持购物袋）",
+        "visual_right": "算法（流动代码与光点）",
+        "visual_style": "digital, holographic, glitch",
+        "mood": "mysterious",
+        "layout_hint": "split left-right",
+        "icon": "code",
+        "animation": "fade_in",
+        "notes": "左右分屏，左边是人影剪影和生活化图标，右边是抽象算法网络，形成视觉对比。"
       },
       {
-        "type": "text_sequence",
-        "lines": [
-          "基于 Transformer 优化架构",
-          "和增强数据清洗技术"
+        "id": 3,
+        "audio_segment": "段3: 4.8s - 7.9s",
+        "duration": 3.04,
+        "type": "keyword_burst",
+        "visual_keywords": [
+          "悄悄",
+          "改变",
+          "匹配",
+          "训练"
         ],
+        "visual_style": "matrix, data stream, surreal",
+        "mood": "dramatic",
+        "layout_hint": "wide spread",
+        "icon": "brain",
+        "animation": "zoom_in",
+        "notes": "四个关键词从不同方向以故障风弹入屏幕，背景为流动的数据流或神经网络图。"
+      },
+      {
+        "id": 4,
+        "audio_segment": "段4: 8.1s - 11.7s",
+        "duration": 3.68,
+        "type": "image_text",
+        "image_query": "smartphone notification array online shopping, abstract digital interface",
+        "text": "你以为的 → 平台匹配的",
+        "visual_style": "cyberpunk, clean, holographic",
+        "mood": "dramatic",
+        "layout_hint": "split left-right",
+        "icon": "lightbulb",
+        "animation": "fade_in",
+        "notes": "图片展示密集推送信息的手机屏幕。上半部图片，下半部左右分列“你以为的”和“平台匹配的”，用箭头连接，强调引导关系。"
+      },
+      {
+        "id": 5,
+        "audio_segment": "段5: 12.0s - 14.6s",
+        "duration": 2.56,
+        "type": "data_card",
+        "visual_label": "品味塑造率",
+        "visual_value": "100",
+        "visual_unit": "%",
+        "visual_trend": "up",
+        "visual_style": "digital, bold, vibrant",
+        "mood": "dramatic",
+        "layout_hint": "spotlight center",
+        "icon": "user-tag",
+        "animation": "scale_in",
+        "notes": "展示一个进度条或数字卡片，数值从0快速跳动到100%，标签为“品味塑造率”，暗示完全被影响。"
+      },
+      {
+        "id": 6,
+        "audio_segment": "段6: 14.8s - 18.8s",
         "duration": 4.0,
-        "animation": "fade_in"
+        "type": "comparison",
+        "visual_left": "你（人像剪影）",
+        "visual_right": "算法（抽象代码流）",
+        "visual_style": "glitch, dramatic, bold",
+        "mood": "inspiring",
+        "layout_hint": "split left-right",
+        "icon": "question-mark",
+        "animation": "scale_in",
+        "notes": "再次左右分屏，但中间放置一个巨大的、闪烁的“？”，问号带有glitch效果，强烈引发思考。"
       },
       {
-        "type": "bullet_points",
-        "items": [
-          "使用 Hugging Face Transformers 库",
-          "pip install transformers 安装",
-          "加载模型，对比输出"
-        ],
-        "duration": 4.5,
-        "animation": "slide_up"
-      },
-      {
+        "id": 7,
+        "audio_segment": "段7: 19.1s - 22.5s",
+        "duration": 3.36,
         "type": "ending",
-        "text": "想亲自试试？评论区领测试脚本！关注我，获取更多 AI 干货",
-        "duration": 4.08,
-        "animation": "fade_out"
+        "text": "被“算”了多少？\n评论区见",
+        "visual_style": "vibrant, digital, hopeful",
+        "mood": "hopeful",
+        "layout_hint": "spotlight center",
+        "icon": "comment-dots",
+        "animation": "fade_in",
+        "notes": "大字提问“被‘算’了多少？”，下方“评论区见”配弹窗图标或二维码，引导互动。背景可是一个逐渐缩小的、象征选择权的进度条。"
       }
-    ]
+    ],
+    "title": "AI 资讯"
   },
-  "durationInFrames": 572
+  "durationInFrames": 659
 }

@@ -5,7 +5,11 @@ export type SceneType =
   | "highlight"
   | "image_text"
   | "bullet_points"
-  | "ending";
+  | "ending"
+  | "data_card"
+  | "comparison"
+  | "keyword_burst"
+  | "progress_bar";
 
 /** Animation styles for different scene types */
 export type AnimationStyle =
@@ -44,8 +48,36 @@ export interface Scene {
   lines?: string[];
   items?: string[];
   imagePath?: string;
+  /** English search query for image_text scenes (10-30 chars) */
+  image_query?: string;
+  /** Optional emoji/icon to display as a visual anchor (e.g. "🤖", "⚡", "🧠") */
+  icon?: string;
   duration: number;
   animation?: AnimationStyle;
+  /** Free-form visual style description (e.g. "cyberpunk neon, bold", "minimal zen, calm") */
+  visual_style?: string;
+  /** Emotional mood of this scene: "urgent", "calm", "inspiring", "mysterious", "playful", "serious", "hopeful", "dramatic" */
+  mood?: string;
+  /** Layout preference: "split left-right", "spotlight center", "left aligned", "stacked cards", "timeline left", "corner pinned", "wide spread" */
+  layout_hint?: string;
+
+  // ── Data visualization fields (data_card / comparison / keyword_burst) ──
+  /** Label shown above a data_card number */
+  visual_label?: string;
+  /** Numeric value for data_card (counts up from 0) */
+  visual_value?: number;
+  /** Unit text for data_card (e.g. "倍", "%", "万") */
+  visual_unit?: string;
+  /** Trend direction for data_card arrow animation */
+  visual_trend?: "up" | "down" | "flat";
+  /** Left-side text for comparison scene */
+  visual_left?: string;
+  /** Right-side text for comparison scene */
+  visual_right?: string;
+  /** Keywords to burst onto screen (keyword_burst) */
+  visual_keywords?: string[];
+  /** Progress value 0-100 for progress_bar */
+  visual_progress?: number;
 }
 
 /** Complete video composition plan produced by the LLM */

@@ -27,16 +27,16 @@ generation:
   auto_image: true
   # 自动生成视频（抖音等视频平台）
   auto_video: true
-  # 生图后端选择: dashscope(默认) / modelscope / agnes
+  # 生图后端选择: dashscope(默认) / agnes
   image_provider: "dashscope"
-  # 生视频后端选择: dashscope(默认) / modelscope / agnes / remotion(文字动画，免费)
+  # 生视频后端选择: dashscope(默认) / agnes / remotion(文字动画，免费)
   video_provider: "dashscope"
   # 是否自动给生成的视频添加字幕
   video_subtitles: true
   video_subtitle_font: "Microsoft YaHei"
   video_subtitle_size: 48
   video_subtitle_line_chars: 16
-  video_subtitle_max_lines: 2
+  video_subtitle_max_lines: 1
   # 字幕样式（CapCut Mate 风格覆写）
   video_subtitle_text_color: "#FFFFFF"
   video_subtitle_border_color: "#000000"
@@ -68,13 +68,6 @@ remotion:
   fps: 30                                 # 渲染帧率
   # browser_executable: ""                # 自定义 Chromium 路径（空=自动查找）
   # chrome_flags: ""                      # 额外 Chrome 启动参数
-
-# ModelScope API 生图/生视频配置
-modelscope:
-  api_token: ""                           # 替换为你的 ModelScope Access Token
-  image_model: "Qwen/Qwen-Image-2512"   # 文生图模型
-  video_model: "Wan-AI/Wan2.2-T2V-A14B-BF16"   # 文生视频模型
-  media_dir: "media"                      # 媒体文件保存目录
 
 # Agnes AI API 生图/生视频配置
 agnes:
@@ -135,6 +128,14 @@ platforms:
     post_publish_wait: 30
 
 # 数据库
+# 图片搜索（用于 Remotion image_text 场景配图）
+image_search:
+  provider: "pexels"              # pexels / unsplash / picsum / placeholder
+  pexels_api_key: ""              # Pexels API key (https://www.pexels.com/api/)
+  unsplash_access_key: ""         # Unsplash access key (https://unsplash.com/developers)
+  download_dir: "media/images"    # 图片下载目录
+  orientation: "portrait"         # portrait / landscape / square
+
 database:
   path: "db/pipeline.db"
 

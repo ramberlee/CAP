@@ -53,6 +53,7 @@ class ContentStore:
         tags: list[str] | None = None,
         media_urls: list[str] | None = None,
         topic_id: int | None = None,
+        description: str = "",
     ) -> Path:
         """Save content as a markdown file. Returns the file path."""
         platform_dir = self._platform_dir(platform)
@@ -70,6 +71,8 @@ class ContentStore:
         }
         if topic_id is not None:
             frontmatter["topic_id"] = topic_id
+        if description:
+            frontmatter["description"] = description
 
         content = f"---\n{yaml.dump(frontmatter, allow_unicode=True, default_flow_style=True).strip()}\n---\n\n"
         content += f"# {title}\n\n{body}\n"
@@ -110,6 +113,7 @@ class ContentStore:
                 "status": meta.get("status", "approved"),
                 "title": title,
                 "body": body,
+                "description": meta.get("description", ""),
                 "tags": meta.get("tags", []),
                 "media_urls": meta.get("media_urls", []),
                 "created_at": meta.get("created_at", ""),

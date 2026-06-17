@@ -1,4 +1,4 @@
-"""Image generation module with DashScope, ModelScope and Agnes backends."""
+"""Image generation module with DashScope and Agnes backends."""
 
 import logging
 import time
@@ -6,7 +6,6 @@ from pathlib import Path
 import requests
 import dashscope
 from dashscope import ImageSynthesis, MultiModalConversation
-from modules.modelscope_client import ModelScopeClient
 from modules.agnes_client import AgnesClient
 
 logger = logging.getLogger(__name__)
@@ -22,7 +21,7 @@ QWEN_V2_MODELS = {
 
 class ImageGenerator:
     def __init__(self, config: dict):
-        # Determine provider: "dashscope" (default), "modelscope", or "agnes"
+        # Determine provider: "dashscope" (default) or "agnes"
         gen_config = config.get("generation", {})
         self.provider = gen_config.get("image_provider", "dashscope")
 
@@ -34,22 +33,15 @@ class ImageGenerator:
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize provider-specific client
-        if self.provider == "modelscope":
-            self.ms_client = ModelScopeClient(config)
-            logger.info(f"ImageGenerator using ModelScope backend (model: {self.ms_client.image_model})")
-        elif self.provider == "agnes":
+        if self.provider == "agnes":
             self.agnes_client = AgnesClient(config)
             logger.info(f"ImageGenerator using Agnes AI backend (model: {self.agnes_client.image_model})")
         else:
             # Configure DashScope SDK
             dashscope.api_key = self.api_key
-            self.ms_client = None
 
     def generate(self, prompt: str, filename: str) -> str | None:
         """Generate an image from a text prompt. Returns local file path or None."""
-        if self.provider == "modelscope":
-            return self._generate_modelscope(prompt, filename)
-
         if self.provider == "agnes":
             return self._generate_agnes(prompt, filename)
 
@@ -62,17 +54,6 @@ class ImageGenerator:
             return self._generate_v2(prompt, filename)
         else:
             return self._generate_v1(prompt, filename)
-
-    def _generate_modelscope(self, prompt: str, filename: str) -> str | None:
-        """Generate using ModelScope API."""
-        logger.info(f"Generating image via ModelScope: {prompt[:50]}...")
-        negative_prompt = "低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，画面具有AI感，构图混乱，文字模糊，扭曲"
-        return self.ms_client.generate_image(
-            prompt=prompt,
-            filename=filename,
-            negative_prompt=negative_prompt,
-            size=self.size,
-        )
 
     def _generate_agnes(self, prompt: str, filename: str) -> str | None:
         """Generate using Agnes AI API."""
