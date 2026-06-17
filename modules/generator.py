@@ -85,6 +85,90 @@ class ContentGenerator:
                 raise FileNotFoundError(f"Template not found: {category_path} or {generic_path}")
         return self._templates[cache_key]
 
+    def _ensure_tags(self, result: dict, category: str) -> None:
+        """Ensure result has valid tags. Auto-generate from title if empty."""
+        tags = result.get("tags", [])
+        if tags:
+            return
+
+        title = result.get("title", "")
+        # Generate basic tags from title keywords
+        fallback_tags = ["#AI"]
+        if category == "dao":
+            fallback_tags.append("#AI时代")
+        else:
+            fallback_tags.append("#AI技术")
+
+        # Extract potential keywords from title (simple split by common delimiters)
+        import re
+        # Remove punctuation and split into chunks
+        chunks = re.split(r'[，。！？、：；“”‘’（）\s]+', title)
+        stopwords = {"的", "了", "是", "在", "和", "有", "不", "这", "那", "人", "我", "你", "他", "她", "它", "们", "被", "把", "将", "从", "到", "又", "就", "也", "都", "而", "且", "但", "或", "如果"}
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if len(chunk) >= 2 and chunk not in stopwords:
+                tag = f"#{chunk}"
+                if tag not in fallback_tags and len(fallback_tags) < 5:
+                    fallback_tags.append(tag)
+
+        # Ensure at least 3 tags
+        while len(fallback_tags) < 3:
+            fallback_tags.append(f"#热点{len(fallback_tags)}")
+
+        result["tags"] = fallback_tags[:5]
+        logger.info(f"Auto-generated tags: {result['tags']}")
+
+    def _validate_douyin_script(self, result: dict) -> None:
+        """Validate douyin script quality and log warnings for issues.
+
+        Non-blocking: logs warnings but does not discard the content.
+        """
+        script = result.get("script", result.get("body", ""))
+        tags = result.get("tags", [])
+        warnings = []
+
+        # Check three-part structure
+        has_hook = "【钩子】" in script
+        has_value = "【价值】" in script
+        has_ending = "【收尾】" in script
+        if not (has_hook and has_value and has_ending):
+            missing = []
+            if not has_hook:
+                missing.append("【钩子】")
+            if not has_value:
+                missing.append("【价值】")
+            if not has_ending:
+                missing.append("【收尾】")
+            warnings.append(f"缺少三段结构: {', '.join(missing)}")
+
+        # Check separator
+        if "---" not in script:
+            warnings.append("缺少 --- 分隔符")
+
+        # Check word count (200-800 chars for Chinese scripts)
+        char_count = len(script)
+        if char_count < 200:
+            warnings.append(f"脚本过短 ({char_count}字)，建议200-800字")
+        elif char_count > 800:
+            warnings.append(f"脚本过长 ({char_count}字)，建议200-800字")
+
+        # Check tags
+        if len(tags) < 3:
+            warnings.append(f"标签不足 ({len(tags)}个)，建议3-5个")
+        elif len(tags) > 5:
+            warnings.append(f"标签过多 ({len(tags)}个)，建议3-5个")
+
+        ai_tag_found = any("AI" in t.upper() or "人工智能" in t for t in tags)
+        if not ai_tag_found:
+            warnings.append("缺少 #AI 相关标签")
+
+        # Log warnings
+        if warnings:
+            for w in warnings:
+                logger.warning(f"[抖音质量校验] {w}")
+        else:
+            logger.info("[抖音质量校验] 脚本质量合格")
+
     def _generate_for_platform(self, topic: str, platform: str, category: str = "dao") -> Optional[dict]:
         """Generate content for a specific platform."""
         template = self._load_template(platform, category)
@@ -115,6 +199,15 @@ class ContentGenerator:
 
             result = json.loads(text[json_start:json_end])
             logger.info(f"Generated {platform} content: {result.get('title', 'N/A')[:30]}")
+
+            # Ensure tags exist (auto-generate if empty)
+            if not result.get("tags"):
+                self._ensure_tags(result, category)
+
+            # Validate douyin script quality
+            if platform == "douyin":
+                self._validate_douyin_script(result)
+
             return result
 
         except json.JSONDecodeError as e:
@@ -345,7 +438,7 @@ class ContentGenerator:
         """Extract speakable text from a composition plan scene."""
         scene_type = scene.get("type", "")
 
-        if scene_type == "title":
+        if scene_type in ("title", "hook"):
             return scene.get("text", "")
         elif scene_type == "text_sequence":
             lines = scene.get("lines", [])
@@ -403,10 +496,22 @@ class ContentGenerator:
             json_start = text.find("{")
             json_end = text.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
-                result = json.loads(text[json_start:json_end])
-                video_prompt = result.get("video_prompt", "")
+                try:
+                    result = json.loads(text[json_start:json_end])
+                    video_prompt = result.get("video_prompt", "")
+                    if video_prompt:
+                        logger.info(f"Video description generated: {video_prompt[:60]}...")
+                        return video_prompt
+                except json.JSONDecodeError:
+                    pass  # Fall through to regex extraction
+
+            # Fallback: extract video_prompt value directly via regex
+            # Handles truncated JSON where the string is never closed
+            match = re.search(r'"video_prompt"\s*:\s*"((?:[^"\\]|\\.)*)', text)
+            if match:
+                video_prompt = match.group(1).strip()
                 if video_prompt:
-                    logger.info(f"Video description generated: {video_prompt[:60]}...")
+                    logger.info(f"Video description extracted (fallback): {video_prompt[:60]}...")
                     return video_prompt
 
             logger.warning(f"No video_prompt found in LLM response: {text[:200]}")

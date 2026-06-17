@@ -18,6 +18,21 @@ from modules.video_planner import VideoPlanner
 logger = logging.getLogger(__name__)
 
 
+def _find_ffmpeg() -> str:
+    """Locate ffmpeg: system PATH first, then imageio_ffmpeg bundled binary."""
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and os.path.isfile(exe):
+            return exe
+    except Exception:
+        pass
+    return "ffmpeg"
+
+
 class VideoGenerator:
     def __init__(self, config: dict):
         # Determine provider: "dashscope" (default), "modelscope", "agnes", or "remotion"
@@ -107,7 +122,7 @@ class VideoGenerator:
                 f.write(f"file '{safe_path}'\n")
 
         try:
-            ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+            ffmpeg = _find_ffmpeg()
             subprocess.run(
                 [ffmpeg, "-y",
                  "-f", "concat", "-safe", "0",
@@ -136,7 +151,7 @@ class VideoGenerator:
         if not audio_path or not Path(audio_path).exists():
             return video_path
 
-        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+        ffmpeg = _find_ffmpeg()
         video_p = Path(video_path)
         temp_output = video_p.with_name(f"{video_p.stem}_with_audio.mp4")
 
@@ -381,7 +396,7 @@ class VideoGenerator:
 
             subprocess.run(
                 [
-                    "ffmpeg",
+                    _find_ffmpeg(),
                     "-y",
                     "-i",
                     video_filter_path,
@@ -778,7 +793,8 @@ class VideoGenerator:
         return result
 
     def _ffmpeg_available(self) -> bool:
-        return shutil.which("ffmpeg") is not None
+        ffmpeg = _find_ffmpeg()
+        return shutil.which(ffmpeg) is not None or os.path.isfile(ffmpeg)
 
     def _probe_video_duration(self, video_path: str) -> float | None:
         if shutil.which("ffprobe") is None:

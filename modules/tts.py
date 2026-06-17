@@ -136,7 +136,16 @@ class TTSSynthesizer:
         import subprocess
         import shutil as sh
 
-        ffmpeg = sh.which("ffmpeg") or sh.which("ffmpeg.exe") or "ffmpeg"
+        ffmpeg = sh.which("ffmpeg") or sh.which("ffmpeg.exe")
+        if not ffmpeg:
+            try:
+                import imageio_ffmpeg
+                exe = imageio_ffmpeg.get_ffmpeg_exe()
+                if exe and os.path.isfile(exe):
+                    ffmpeg = exe
+            except Exception:
+                pass
+        ffmpeg = ffmpeg or "ffmpeg"
         total_dur = TTSSynthesizer.get_audio_duration(audio_path)
 
         if total_dur <= max_segment_duration:
