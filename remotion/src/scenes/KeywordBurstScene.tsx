@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle } from "../components/VisualInterpreter";
+import { computeStyle, easeOutCubic } from "../components/VisualInterpreter";
 
 interface KeywordBurstSceneProps {
   theme: ThemePalette;

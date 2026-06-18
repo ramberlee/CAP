@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle, getStaggerDelay } from "../components/VisualInterpreter";
+import { computeStyle, getStaggerDelay, easeOutCubic } from "../components/VisualInterpreter";
 
 interface EndingSceneProps {
   theme: ThemePalette; text: string; duration: number;
@@ -48,7 +48,7 @@ const EndingScene: React.FC<EndingSceneProps> = ({
 
         {lines.map((line, i) => {
           const delay = getStaggerDelay(i, lines.length, cs.entrancePattern, 0.2);
-          const lineT = Math.max(0, Math.min(1, (t - delay) * 2));
+          const lineT = easeOutCubic(Math.max(0, Math.min(1, (t - delay) * 2)));
           return (
             <div key={i} style={{
               fontSize: i === 0 ? cs.fontSize * 0.9 : cs.fontSize * 0.6,

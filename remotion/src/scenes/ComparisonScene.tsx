@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle } from "../components/VisualInterpreter";
+import { computeStyle, easeOutCubic } from "../components/VisualInterpreter";
 
 interface ComparisonSceneProps {
   theme: ThemePalette;
@@ -38,13 +38,11 @@ const ComparisonScene: React.FC<ComparisonSceneProps> = ({
   const rightT = Math.max(0, Math.min(1, (t - rightDelay) / animDuration));
 
   // VS divider expands
-  const vsT = Math.max(0, Math.min(1, (t - 0.2) * 2));
+  const vsT = easeOutCubic(Math.max(0, Math.min(1, (t - 0.2) * 2)));
   const vsPulse = 1 + 0.06 * Math.sin((t - 0.2) * Math.PI * 3);
 
-  // Ease-out cubic
-  const ease = (x: number) => 1 - Math.pow(1 - x, 3);
-  const leftX = (1 - ease(leftT)) * -150;
-  const rightX = (1 - ease(rightT)) * 150;
+  const leftX = (1 - easeOutCubic(leftT)) * -150;
+  const rightX = (1 - easeOutCubic(rightT)) * 150;
 
   return (
     <SceneWrapper

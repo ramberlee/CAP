@@ -302,6 +302,20 @@ export function getAnimationDuration(speed: ComputedStyle["animationSpeed"]): nu
 }
 
 /**
+ * Ease-out cubic: fast start, smooth deceleration.
+ */
+export function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/**
+ * Ease-in-out cubic: smooth acceleration and deceleration.
+ */
+export function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/**
  * Get entrance stagger delay for items based on pattern.
  */
 export function getStaggerDelay(

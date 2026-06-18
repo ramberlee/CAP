@@ -53,6 +53,9 @@ const VideoComposition: React.FC<any> = (props) => {
         overflow: "hidden",
         fontFamily:
           '"Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif',
+        WebkitFontSmoothing: "antialiased",
+        MozOsxFontSmoothing: "grayscale",
+        textRendering: "optimizeLegibility",
       }}
     >
       {plan.scenes.map((scene: Scene, index: number) => {

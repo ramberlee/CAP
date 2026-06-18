@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig, Img } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle } from "../components/VisualInterpreter";
+import { computeStyle, easeOutCubic } from "../components/VisualInterpreter";
 
 interface ImageTextSceneProps {
   theme: ThemePalette; text: string; imagePath?: string; duration: number;
@@ -49,7 +49,7 @@ const ImageTextScene: React.FC<ImageTextSceneProps> = ({
         <div style={{ flex: "0 0 45%", background: theme.background, display: "flex", flexDirection: "column", justifyContent: "center", padding: "20px 40px" }}>
           {mainLines.map((line, i) => {
             const lineDelay = i * 0.15;
-            const lineT = Math.max(0, Math.min(1, (t - lineDelay) * 3));
+            const lineT = easeOutCubic(Math.max(0, Math.min(1, (t - lineDelay) * 3)));
             return (
               <div key={i} style={{
                 fontSize: i === 0 ? cs.fontSize * 0.85 : cs.fontSize * 0.65,

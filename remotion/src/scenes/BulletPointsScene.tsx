@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle, getStaggerDelay } from "../components/VisualInterpreter";
+import { computeStyle, getStaggerDelay, easeOutCubic } from "../components/VisualInterpreter";
 
 interface BulletPointsSceneProps {
   theme: ThemePalette; items: string[]; duration: number;
@@ -34,7 +34,7 @@ const BulletPointsScene: React.FC<BulletPointsSceneProps> = ({
         {items.map((item, i) => {
           const delay = getStaggerDelay(i, items.length, cs.entrancePattern, itemInterval * 0.6 / items.length);
           const appearAt = i * itemInterval * 0.6;
-          const itemT = Math.max(0, Math.min(1, (t - appearAt) * 3));
+          const itemT = easeOutCubic(Math.max(0, Math.min(1, (t - appearAt) * 3)));
           const barStart = appearAt;
           const barEnd = appearAt + itemInterval * 0.85;
           const barProgress = Math.max(0, Math.min(1, (t - barStart) / (barEnd - barStart)));

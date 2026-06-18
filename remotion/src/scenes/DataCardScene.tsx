@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle } from "../components/VisualInterpreter";
+import { computeStyle, easeOutCubic } from "../components/VisualInterpreter";
 
 interface DataCardSceneProps {
   theme: ThemePalette;
@@ -44,7 +44,7 @@ const DataCardScene: React.FC<DataCardSceneProps> = ({
     : 0;
 
   // Scale entrance
-  const entranceScale = Math.min(1, (t / 0.4));
+  const entranceScale = easeOutCubic(Math.min(1, (t / 0.4)));
 
   // Trend arrow
   const trendArrow = visual_trend === "up" ? "↑" : visual_trend === "down" ? "↓" : "→";

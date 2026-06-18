@@ -1,8 +1,8 @@
 import React from "react";
-import { AbsoluteFill, useVideoConfig, useCurrentFrame, Img } from "remotion";
+import { AbsoluteFill, useVideoConfig, useCurrentFrame, Img, staticFile } from "remotion";
 import { ThemePalette, AnimationStyle } from "../types";
 import BackgroundDecorations from "../components/BackgroundDecorations";
-import { ComputedStyle, computeStyle } from "../components/VisualInterpreter";
+import { ComputedStyle, computeStyle, easeOutCubic } from "../components/VisualInterpreter";
 
 interface SceneWrapperProps {
   theme: ThemePalette;
@@ -34,8 +34,9 @@ export const SceneWrapper: React.FC<SceneWrapperProps> = ({
   imagePath,
 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, durationInFrames } = useVideoConfig();
   const t = frame / fps;
+  const duration = durationInFrames / fps;
 
   // Compute dynamic visual style from LLM descriptions
   const cs = computedStyle || computeStyle(visualStyle, mood, layoutHint, theme);
@@ -47,22 +48,24 @@ export const SceneWrapper: React.FC<SceneWrapperProps> = ({
   const speedMultiplier = cs.animationSpeed === "fast" ? 1.7 : cs.animationSpeed === "slow" ? 0.6 : 1.0;
 
   if (animation === "fade_in") {
-    opacity = Math.min(1, t * 2 * speedMultiplier);
+    opacity = easeOutCubic(Math.min(1, t * 2 * speedMultiplier));
   } else if (animation === "scale_in") {
-    const progress = Math.min(1, t * 1.5 * speedMultiplier);
+    const progress = easeOutCubic(Math.min(1, t * 1.5 * speedMultiplier));
     opacity = progress;
     transform = `scale(${0.8 + 0.2 * progress})`;
   } else if (animation === "slide_up") {
-    const progress = Math.min(1, t * 2 * speedMultiplier);
+    const progress = easeOutCubic(Math.min(1, t * 2 * speedMultiplier));
     opacity = progress;
     transform = `translateY(${(1 - progress) * 50}px)`;
   } else if (animation === "zoom_in") {
-    const progress = Math.min(1, t * 1.5 * speedMultiplier);
+    const progress = easeOutCubic(Math.min(1, t * 1.5 * speedMultiplier));
     opacity = progress;
     transform = `scale(${1.3 - 0.3 * progress})`;
   } else if (animation === "fade_out") {
-    const duration = 30 / fps;
-    opacity = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / duration);
+    // Fade out only in the last ~1/3 of the scene
+    const fadeDuration = Math.min(1.0, duration / 3);
+    const fadeStart = Math.max(0, duration - fadeDuration);
+    opacity = t < fadeStart ? 1 : Math.max(0, 1 - (t - fadeStart) / fadeDuration);
   }
 
   // ── motion style: subtle per-frame transforms ──
@@ -115,7 +118,7 @@ export const SceneWrapper: React.FC<SceneWrapperProps> = ({
       {/* Background image layer — LLM-assigned per scene */}
       {imagePath && (
         <Img
-          src={imagePath}
+          src={imagePath.startsWith("http") || imagePath.startsWith("file") ? imagePath : staticFile(imagePath)}
           style={{
             position: "absolute",
             inset: 0,
@@ -132,7 +135,7 @@ export const SceneWrapper: React.FC<SceneWrapperProps> = ({
           style={{
             position: "absolute",
             inset: 0,
-            background: `linear-gradient(180deg, ${bgColor}cc 0%, ${bgColor}88 40%, ${bgColor}dd 100%)`,
+            background: `linear-gradient(180deg, ${bgColor}44 0%, ${bgColor}22 40%, ${bgColor}66 100%)`,
             zIndex: 0,
           }}
         />

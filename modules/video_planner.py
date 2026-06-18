@@ -243,37 +243,31 @@ VIDEO_PLANNER_SEED_PROMPT = """你是一个专业的短视频视觉导演。根�
 2. **15秒留人**：每 15s 切换场景类型或动画风格
 3. **情绪曲线**：hook（震撼）→ 干货（好奇/数据）→ ending（共鸣/行动）
 4. **信息密度**：开场短(2-3s) → 中段充实(3-5s) → 收束简洁(2-3s)
+5. **场景拆分（关键！）**：每个场景最多 3-4 秒！如果一段音频有 7-8 秒，必须拆成 2-3 个场景。
+   场景越短，画面切换越频繁，观众越不容易划走。
+6. **场景数 ≥ 音频段数 × 2**：宁可多切画面，不要让观众盯着同一画面超过 4 秒
 
 ## 场景类型详解
 
 ### 文字类
-- **hook**：开场强钩子，大字居中+冲击动画(zoom_in)。显示关键词而非完整句子。
-- **title**：标题大字居中，动画 scale_in，2-3s
-- **text_sequence**：文字逐行滑入(fade_in)，适合逐步揭示信息
-- **highlight**：放大强调+光效(pulse)，适合核心观点/金句
-- **bullet_points**：编号列表(slide_up)，适合要点罗列
-- **ending**：结尾引导关注(fade_out)，2-3s
+- **hook**：开场强钩子，大字居中+冲击动画(zoom_in)。显示关键词而非完整句子。2-3s
+- **title**：标题大字居中，动画 scale_in。2-3s
+- **text_sequence**：文字逐行滑入(fade_in)，适合逐步揭示信息。2-3s
+- **highlight**：放大强调+光效(pulse)，适合核心观点/金句。2-3s
+- **bullet_points**：编号列表(slide_up)，适合要点罗列。2-3s
+- **ending**：结尾引导关注(fade_out)。2-3s
 
-### 数据可视化类（新增 — 优先使用！）
+### 数据可视化类（优先使用！）
 - **data_card**：大数字卡片。visual_label="推理能力"，visual_value=10，visual_unit="倍提升"，visual_trend="up"。
-  数字从0动画到目标值，带趋势箭头。动画 scale_in，2-3s
+  数字从0动画到目标值，带趋势箭头。动画 scale_in。2-3s
 - **comparison**：分屏对比。visual_left="旧方案: 5小时"，visual_right="新方案: 3分钟"。
-  左右对比动画 slide_up，2-4s
+  左右对比动画 slide_up。2-3s
 - **keyword_burst**：关键词炸裂弹入。visual_keywords=["更快", "更智能", "更便宜"]。
-  词汇从不同方向弹入屏幕，动画 zoom_in，1.5-3s
+  词汇从不同方向弹入屏幕。动画 zoom_in。2-3s
 
 ### 图文类
-- **image_text**：上半部配图+下半部关键词/数据。提供 image_query（英文搜索词10-30字）。3-6s
+- **image_text**：上半部配图+下半部关键词/数据。2-3s
 - **progress_bar**：进度/趋势条。visual_progress=85（表示85%），visual_label="效率提升"。2-3s
-
-## 图片背景 image_query（可用于任意场景类型）
-**任何场景都可以添加 image_query 字段**，系统会自动搜索下载对应图片作为背景：
-- hook/title：配合冲击力文字，用高对比度图片增强视觉冲击
-- highlight：在强调文字背后放氛围图
-- data_card：数据卡片背后用相关配图
-- ending：结尾用温馨/振奋的背景图
-- 图片会做暗化处理保证文字可读性
-- image_query 用英文，10-30字，描述具体场景（如 "futuristic AI chip closeup"、"serene mountain sunrise"）
 
 ## 输出格式
 输出纯 JSON：
@@ -411,8 +405,11 @@ VIDEO_PLANNER_USER_PROMPT_TEMPLATE = """根据参考素材和音频时间戳，�
 4. 优先使用 data_card / comparison / keyword_burst 让画面有数据感和冲击力
 5. 场景类型多样化：至少包含 hook、1 个数据可视化类型、ending
 6. 每个场景必须设置 visual_style、mood、layout_hint
-7. 适当使用 image_text 场景（约占 20%），提供英文 image_query
-8. 场景数量 = 音频段数（大约），每个场景的 duration 使用对应音频段的时长
+7. 适当使用 image_text 场景（约占 20%）
+8. **场景拆分（最重要！）**：每个场景最长不超过 4 秒。如果一段音频有 7-8 秒，必须拆成 2-3 个不同类型的场景。
+   例如：一段 8 秒的音频可以拆成 → keyword_burst(3s) + highlight(2.5s) + data_card(2.5s)
+   场景总数应该是音频段数的 2-3 倍。所有场景的 duration 总和必须等于总音频时长。
+9. 场景之间的 duration 之和必须精确等于总音频时长，不要有多余或缺失的时间
 
 请输出 JSON 构图计划。"""
 
@@ -438,15 +435,16 @@ VIDEO_PLANNER_META_PROMPT = """你是一个世界级的 prompt 工程师，专�
    - comparison：分屏对比(visual_left/visual_right)
    - keyword_burst：关键词弹入(visual_keywords[])
    - progress_bar：进度条(visual_progress/visual_label)
-   - **任何场景类型都可以添加 image_query 字段**（10-30字英文），系统自动下载图片做背景
-4. **针对本内容的场景推荐**：看完素材后，推荐 2-3 个最出彩的视觉手法，并建议哪些场景适合配图
-5. **可用 theme**：dark_tech / light_clean / vibrant / minimal / news — 推荐最适合的一个
-6. **visual_style 关键词库**（英文）：cyberpunk, neon, holographic, digital, matrix, luxurious, cinematic, elegant, premium, explosive, energetic, dynamic, bold, impactful, minimal, zen, calm, clean, soft, playful, creative, vibrant, pop
-7. **mood 选项**：urgent | calm | inspiring | mysterious | serious | hopeful | dramatic
-8. **layout_hint 选项**：spotlight center | left aligned | split left-right | stacked cards | timeline left | wide spread
-9. **animation 选项**：fade_in | scale_in | slide_up | typewriter | pulse | zoom_in | fade_out
-10. **输出格式**：纯 JSON，包含 title/theme/scenes[] 数组
-11. **一个完整的示例 JSON 输出**（用与当前素材类似的内容作为示例）
+4. **针对本内容的场景推荐**：看完素材后，推荐 2-3 个最出彩的视觉手法
+5. **场景拆分规则（最重要！）**：每个场景最长不超过 4 秒。长音频段必须拆成 2-3 个不同类型的短场景。
+   场景总数 = 音频段数 × 2-3 倍。所有场景 duration 之和 = 总音频时长。
+6. **可用 theme**：dark_tech / light_clean / vibrant / minimal / news — 推荐最适合的一个
+7. **visual_style 关键词库**（英文）：cyberpunk, neon, holographic, digital, matrix, luxurious, cinematic, elegant, premium, explosive, energetic, dynamic, bold, impactful, minimal, zen, calm, clean, soft, playful, creative, vibrant, pop
+8. **mood 选项**：urgent | calm | inspiring | mysterious | serious | hopeful | dramatic
+9. **layout_hint 选项**：spotlight center | left aligned | split left-right | stacked cards | timeline left | wide spread
+10. **animation 选项**：fade_in | scale_in | slide_up | typewriter | pulse | zoom_in | fade_out
+11. **输出格式**：纯 JSON，包含 title/theme/scenes[] 数组
+12. **一个完整的示例 JSON 输出**（用与当前素材类似的内容作为示例）
 
 ## 风格
 - 用中文写提示词
@@ -564,53 +562,59 @@ class VideoPlanner:
 
         audio_timeline = _format_audio_timeline(audio_timings)
 
-        # ── Step 1: Generate custom system prompt ──
-        custom_system_prompt = self._generate_custom_system_prompt(
-            script=script, title=title, tags=tags, audio_timeline=audio_timeline,
+        # Use seed prompt directly for reliability
+        custom_system_prompt = VIDEO_PLANNER_SEED_PROMPT
+
+        # ── Step 2: Generate plan with custom prompt (retry once with seed prompt on failure) ──
+        format_kwargs = dict(
+            title=title or "无标题",
+            script=script[:800],
+            tags=", ".join(tags[:5]) if tags else "无",
+            audio_timeline=audio_timeline,
         )
-        if not custom_system_prompt:
-            logger.warning("Custom prompt generation failed, using seed prompt as fallback")
-            custom_system_prompt = VIDEO_PLANNER_SEED_PROMPT
-        else:
-            logger.info(f"Custom system prompt generated ({len(custom_system_prompt)} chars)")
+        user_prompt = VIDEO_PLANNER_USER_PROMPT_TEMPLATE.format(**format_kwargs)
 
-        # ── Step 2: Generate plan with custom prompt ──
-        try:
-            format_kwargs = dict(
-                title=title or "无标题",
-                script=script[:800],
-                tags=", ".join(tags[:5]) if tags else "无",
-                audio_timeline=audio_timeline,
-            )
-            user_prompt = VIDEO_PLANNER_USER_PROMPT_TEMPLATE.format(**format_kwargs)
+        prompts_to_try = [
+            ("custom prompt", custom_system_prompt),
+            ("seed prompt (retry)", VIDEO_PLANNER_SEED_PROMPT),
+        ]
 
-            logger.info("Generating visual composition plan via LLM (custom prompt)...")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=4096,
-                temperature=0.7,
-                messages=[
-                    {"role": "system", "content": custom_system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
+        text = ""
+        text_raw = ""
+        for prompt_label, system_prompt in prompts_to_try:
+            try:
+                logger.info(f"Generating visual composition plan via LLM ({prompt_label})...")
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    temperature=0.7,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+                text_raw = response.choices[0].message.content.strip()
+                text = _extract_json(text_raw)
+                text = _fix_json(text)
+                if text.strip():
+                    break  # Success
+                logger.warning(f"Empty JSON from video planner ({prompt_label}). Raw (first 300 chars): {text_raw[:300]}")
+            except Exception as e:
+                logger.error(f"Video planner LLM call failed ({prompt_label}): {e}")
 
-            text = response.choices[0].message.content.strip()
-        except Exception as e:
-            logger.error(f"Video planner LLM call failed: {e}")
+        if not text.strip():
+            logger.warning("All video planner attempts failed, using fallback plan")
             return self._fallback_plan(script, title, total_duration, audio_timings)
 
-        text_raw = text
-
         try:
-            text = _extract_json(text)
-            text = _fix_json(text)
-            if not text.strip():
-                logger.warning(f"Empty JSON from video planner: {text_raw[:200]}")
-                return self._fallback_plan(script, title, total_duration, audio_timings)
 
             plan = json.loads(text)
             self._validate_plan(plan)
+
+            # If too few scenes, fall back
+            if len(plan.get("scenes", [])) < 4:
+                logger.warning(f"LLM returned only {len(plan['scenes'])} scenes, using fallback plan")
+                return self._fallback_plan(script, title, total_duration, audio_timings)
 
             # Override scene durations from audio timings if available
             if audio_timings:
@@ -683,6 +687,41 @@ class VideoPlanner:
                     elif isinstance(scene[key], list):
                         scene[key] = [_re.sub(r"\[VIDEO:.*?]", "", t).strip() for t in scene[key]]
 
+        # Enforce scene diversity: no single type should exceed 40% of scenes
+        scenes = plan["scenes"]
+        if len(scenes) >= 4:
+            from collections import Counter
+            type_counts = Counter(s["type"] for s in scenes)
+            dominant_type, dominant_count = type_counts.most_common(1)[0]
+            max_allowed = max(2, int(len(scenes) * 0.4))
+            if dominant_count > max_allowed and dominant_type not in ("hook", "ending"):
+                # Convert excess scenes to varied types
+                alt_types = ["highlight", "keyword_burst", "data_card", "bullet_points", "comparison"]
+                convert_count = dominant_count - max_allowed
+                converted = 0
+                for i, scene in enumerate(scenes):
+                    if converted >= convert_count:
+                        break
+                    if scene["type"] == dominant_type and i > 0 and i < len(scenes) - 1:
+                        new_type = alt_types[converted % len(alt_types)]
+                        scene["type"] = new_type
+                        scene["animation"] = self._DEFAULT_ANIMATIONS.get(new_type, "fade_in")
+                        # Add required fields for the new type
+                        if new_type == "keyword_burst" and "visual_keywords" not in scene:
+                            text = scene.get("text", "")
+                            scene["visual_keywords"] = [text[:8]] if text else ["AI"]
+                        elif new_type == "data_card" and "visual_label" not in scene:
+                            scene["visual_label"] = scene.get("text", "")[:10] or "数据"
+                            scene["visual_value"] = 80
+                            scene["visual_unit"] = "%"
+                            scene["visual_trend"] = "up"
+                        elif new_type == "comparison" and "visual_left" not in scene:
+                            scene["visual_left"] = scene.get("text", "")[:12] or "旧方案"
+                            scene["visual_right"] = "新方案"
+                        elif new_type == "bullet_points" and "items" not in scene:
+                            scene["items"] = [scene.get("text", "")[:15]] or ["要点"]
+                        converted += 1
+
     def _fallback_plan(
         self,
         script: str,
@@ -692,14 +731,21 @@ class VideoPlanner:
     ) -> dict:
         """Generate a fallback visual plan when LLM fails."""
         if total_duration is None:
-            char_count = len(script)
-            total_duration = max(15.0, min(60.0, char_count / 4.0 + 3.0))
+            if audio_timings:
+                total_duration = sum(t["end"] - t["start"] for t in audio_timings)
+            else:
+                char_count = len(script)
+                total_duration = max(15.0, min(60.0, char_count / 4.0 + 3.0))
 
-        sentences = _re.split(r"[。！？!?]", script)
-        sentences = [s.strip() for s in sentences if s.strip()]
+        sentences = _re.split(r"[。！？!?，,；;：:]", script)
+        sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 2]
 
-        n_scenes = min(len(sentences), 8)
-        per_scene = total_duration / max(n_scenes + 1, 3)
+        if not sentences:
+            sentences = [title or "AI 资讯"]
+
+        # Ensure enough scenes: at least 1 per sentence, capped
+        n_scenes = min(max(len(sentences), 6), 12)
+        per_scene = total_duration / max(n_scenes, 3)
 
         hook_text = sentences[0][:18] if sentences else (title or "AI 资讯")
         scenes = [
@@ -708,66 +754,69 @@ class VideoPlanner:
                 "text": hook_text,
                 "duration": min(3.0, per_scene * 1.2),
                 "animation": "zoom_in",
+                "icon": "🤖",
+                "visual_style": "explosive neon",
+                "mood": "urgent",
+                "layout_hint": "spotlight center",
             }
         ]
 
         remaining = sentences[1:] if len(sentences) > 1 else sentences
-        chunk_size = max(1, len(remaining) // max(n_scenes - 1, 1))
+        # Scene type rotation for diversity
+        type_rotation = [
+            ("data_card", "scale_in"),
+            ("keyword_burst", "zoom_in"),
+            ("highlight", "pulse"),
+            ("text_sequence", "fade_in"),
+            ("comparison", "slide_up"),
+            ("bullet_points", "slide_up"),
+            ("keyword_burst", "zoom_in"),
+            ("highlight", "pulse"),
+        ]
 
-        for i in range(0, len(remaining), chunk_size):
-            chunk = remaining[i : i + chunk_size]
-            idx = len(scenes)
+        for i, sent in enumerate(remaining):
+            scene_type, anim = type_rotation[i % len(type_rotation)]
+            text = sent[:25]
 
-            if idx % 4 == 1:
-                # data_card — extract a number from the chunk if present
-                text = chunk[0] if chunk else ""
+            scene = {
+                "type": scene_type,
+                "duration": round(per_scene, 2),
+                "animation": anim,
+                "visual_style": "digital clean",
+                "mood": "inspiring",
+                "layout_hint": "spotlight center",
+            }
+
+            if scene_type == "data_card":
                 num_match = _re.search(r"(\d+)\s*(倍|%|万|亿)", text)
-                if num_match:
-                    scenes.append({
-                        "type": "data_card",
-                        "visual_label": text[:10],
-                        "visual_value": int(num_match.group(1)),
-                        "visual_unit": num_match.group(2),
-                        "visual_trend": "up",
-                        "duration": per_scene,
-                        "animation": "scale_in",
-                    })
-                else:
-                    scenes.append({
-                        "type": "highlight",
-                        "text": text[:18],
-                        "duration": per_scene,
-                        "animation": "pulse",
-                    })
-            elif idx % 4 == 2 and len(chunk) >= 2:
-                scenes.append({
-                    "type": "comparison",
-                    "visual_left": chunk[0][:12],
-                    "visual_right": chunk[1][:12] if len(chunk) > 1 else "新方案",
-                    "duration": per_scene * 1.5,
-                    "animation": "slide_up",
-                })
-            elif idx % 4 == 3:
-                scenes.append({
-                    "type": "keyword_burst",
-                    "visual_keywords": [c[:8] for c in chunk[:3]],
-                    "duration": per_scene,
-                    "animation": "zoom_in",
-                })
-            elif len(chunk) == 1:
-                scenes.append({
-                    "type": "text_sequence",
-                    "lines": [chunk[0]],
-                    "duration": per_scene,
-                    "animation": "fade_in",
-                })
-            else:
-                scenes.append({
-                    "type": "bullet_points",
-                    "items": [c[:15] for c in chunk[:4]],
-                    "duration": per_scene * len(chunk) * 0.5,
-                    "animation": "slide_up",
-                })
+                scene["visual_label"] = text[:10]
+                scene["visual_value"] = int(num_match.group(1)) if num_match else 80
+                scene["visual_unit"] = num_match.group(2) if num_match else "%"
+                scene["visual_trend"] = "up"
+                scene["icon"] = "📊"
+            elif scene_type == "keyword_burst":
+                # Extract keywords from the sentence
+                words = [w.strip() for w in _re.split(r"[，,、\s]+", text) if len(w.strip()) >= 2]
+                scene["visual_keywords"] = words[:3] if words else [text[:8]]
+                scene["icon"] = "⚡"
+            elif scene_type == "highlight":
+                scene["text"] = text
+                scene["icon"] = "💡"
+            elif scene_type == "text_sequence":
+                # Split long text into lines
+                lines = [text[j:j+12] for j in range(0, len(text), 12)]
+                scene["lines"] = lines[:3]
+                scene["icon"] = "📝"
+            elif scene_type == "comparison":
+                scene["visual_left"] = text[:12]
+                scene["visual_right"] = "新方案"
+                scene["icon"] = "⚖️"
+            elif scene_type == "bullet_points":
+                items = [w.strip() for w in _re.split(r"[，,、；;]", text) if len(w.strip()) >= 2]
+                scene["items"] = items[:3] if items else [text[:15]]
+                scene["icon"] = "📋"
+
+            scenes.append(scene)
 
         if sentences:
             last = sentences[-1]
@@ -803,20 +852,31 @@ class VideoPlanner:
 
 def _extract_json(text: str) -> str:
     """Extract JSON object from text that may have markdown fences or surrounding text."""
-    # Strip markdown code fences
-    if text.startswith("```"):
-        first_newline = text.find("\n")
-        if first_newline > 0:
-            text = text[first_newline + 1:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
+    if not text or not text.strip():
+        return ""
 
-    # Find first { and last }
+    text = text.strip()
+
+    # Try 1: Strip markdown code fences (```json ... ``` or ``` ... ```)
+    import re as _re2
+    fence_match = _re2.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, _re2.DOTALL)
+    if fence_match:
+        candidate = fence_match.group(1).strip()
+        if candidate.startswith("{"):
+            return candidate
+
+    # Try 2: Find first { and last }
     json_start = text.find("{")
     json_end = text.rfind("}")
     if json_start >= 0 and json_end > json_start:
         return text[json_start:json_end + 1]
+
+    # Try 3: Find [ and ] (array response)
+    arr_start = text.find("[")
+    arr_end = text.rfind("]")
+    if arr_start >= 0 and arr_end > arr_start:
+        return text[arr_start:arr_end + 1]
+
     return ""
 
 
@@ -900,31 +960,49 @@ def _format_audio_timeline(timings: list[dict] | None) -> str:
 def _apply_audio_timings(plan: dict, timings: list[dict]) -> None:
     """Apply measured audio timestamps to scene durations.
 
-    Maps audio segments to plan scenes in order.  Each scene gets its duration
-    set to the corresponding audio segment's actual length.
+    When scenes > timings (multiple scenes per audio segment), distributes
+    each audio segment's duration proportionally among its mapped scenes.
     """
     scenes = plan.get("scenes", [])
     if not scenes or not timings:
         return
 
-    for i in range(min(len(scenes), len(timings))):
-        dur = round(timings[i]["end"] - timings[i]["start"], 2)
-        if dur > 0:
-            scenes[i]["duration"] = dur
+    total_audio = sum(t["end"] - t["start"] for t in timings)
+    total_scene_dur = sum(s.get("duration", 3.0) for s in scenes)
 
-    # If there are more scenes than timings, scale remaining proportionally
-    if len(scenes) > len(timings):
-        remaining_dur = 1.0  # minimal fallback
-        for i in range(len(timings), len(scenes)):
-            scenes[i]["duration"] = remaining_dur
-
-    # If there are more timings than scenes, extend last scene
-    if len(timings) > len(scenes) and scenes:
-        extra = sum(
-            timings[i]["end"] - timings[i]["start"]
-            for i in range(len(scenes), len(timings))
-        )
-        scenes[-1]["duration"] = round(scenes[-1].get("duration", 2.0) + extra, 2)
+    if len(scenes) <= len(timings):
+        # Fewer or equal scenes: map 1:1
+        for i in range(len(scenes)):
+            dur = round(timings[i]["end"] - timings[i]["start"], 2)
+            if dur > 0:
+                scenes[i]["duration"] = dur
+        # Extra timings → extend last scene
+        if len(timings) > len(scenes) and scenes:
+            extra = sum(
+                timings[i]["end"] - timings[i]["start"]
+                for i in range(len(scenes), len(timings))
+            )
+            scenes[-1]["duration"] = round(scenes[-1].get("duration", 2.0) + extra, 2)
+    else:
+        # More scenes than timings: distribute each audio segment's duration
+        # among its mapped scenes, proportional to the scene's planned duration
+        scenes_per_seg = len(scenes) / len(timings)
+        scene_idx = 0
+        for seg_i, timing in enumerate(timings):
+            seg_dur = timing["end"] - timing["start"]
+            # How many scenes map to this segment
+            start_idx = round(seg_i * scenes_per_seg)
+            end_idx = round((seg_i + 1) * scenes_per_seg)
+            end_idx = min(end_idx, len(scenes))
+            group_scenes = scenes[start_idx:end_idx]
+            if not group_scenes:
+                continue
+            group_total = sum(s.get("duration", 3.0) for s in group_scenes)
+            if group_total <= 0:
+                group_total = len(group_scenes) * 3.0
+            for s in group_scenes:
+                ratio = s.get("duration", 3.0) / group_total
+                s["duration"] = round(seg_dur * ratio, 2)
 
     logger.info(
         f"Applied audio timings: {len(timings)} segments → {len(scenes)} scenes, "

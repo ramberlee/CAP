@@ -849,6 +849,21 @@ class VideoGenerator:
             logger.warning(f"Image search module not available: {e}")
             return
 
+        image_dir = searcher.download_dir.resolve()
+
+        # Start an HTTP server to serve downloaded images to Remotion's Chromium.
+        # This avoids Remotion's staticFile() which has intermittent 404 issues
+        # with the public/ directory in render mode.
+        import threading
+        from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+        class _ImageHandler(SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=str(image_dir), **kwargs)
+
+        http_server = None
+        http_port = None
+
         base_name = Path(filename).stem
         for i, scene in image_scenes:
             query = scene["image_query"].strip()
@@ -858,9 +873,23 @@ class VideoGenerator:
             path = searcher.search_and_download(query, img_filename)
 
             if path:
-                file_url = path.resolve().as_uri()
-                scene["imagePath"] = file_url
-                logger.info(f"Image resolved for scene {i}: {file_url}")
+                # Start HTTP server on first successful image download
+                if http_server is None:
+                    for port in range(9876, 9900):
+                        try:
+                            http_server = HTTPServer(("127.0.0.1", port), _ImageHandler)
+                            http_port = port
+                            thread = threading.Thread(target=http_server.serve_forever, daemon=True)
+                            thread.start()
+                            logger.info(f"Started image HTTP server on port {http_port}")
+                            break
+                        except OSError:
+                            continue
+
+                # Use HTTP URL instead of file:// or staticFile()
+                http_url = f"http://127.0.0.1:{http_port}/{path.name}"
+                scene["imagePath"] = http_url
+                logger.info(f"Image resolved for scene {i}: {http_url}")
             else:
                 logger.warning(f"Failed to find image for scene {i} query '{query}'")
                 # scene will use its normal background (no imagePath)
@@ -909,8 +938,10 @@ class VideoGenerator:
         # Calculate actual video duration from plan scenes
         plan_duration = sum(s.get("duration", 3) for s in plan.get("scenes", []))
 
-        # Step 1.5: Resolve images for image_text scenes
-        self._resolve_scene_images(plan, filename)
+        # Step 1.5: Resolve images for image_text scenes (skip if disabled)
+        gen_config = self.config.get("generation", {})
+        if gen_config.get("auto_image", False):
+            self._resolve_scene_images(plan, filename)
 
         # Ensure video duration matches audio exactly.
         # With per-scene TTS, audio includes inter-scene gaps (~0.15s each)

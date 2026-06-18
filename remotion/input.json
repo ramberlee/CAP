@@ -1,112 +1,88 @@
 {
   "plan": {
-    "concept": "算法对消费决策的隐秘操控",
-    "theme": "vibrant",
+    "title": "AI代理一键生成，替代80%工作",
+    "theme": "dark_tech",
     "scenes": [
       {
-        "id": 1,
-        "audio_segment": "段1: 0.0s - 1.8s",
-        "duration": 1.76,
         "type": "hook",
-        "text": "5月 | 数据爆",
-        "visual_style": "explosive, digital, bold",
+        "text": "AI代理",
+        "icon": "⚡",
+        "visual_style": "explosive neon, bold",
         "mood": "urgent",
         "layout_hint": "spotlight center",
-        "icon": "chart-line-up",
-        "animation": "zoom_in",
-        "notes": "大字“5月”与“数据爆”分两行居中，数字“5”做金属光效，箭头向上冲击。"
+        "duration": 2.0,
+        "animation": "zoom_in"
       },
       {
-        "id": 2,
-        "audio_segment": "段2: 2.1s - 4.6s",
-        "duration": 2.56,
+        "type": "data_card",
+        "visual_label": "自动化替代",
+        "visual_value": 80,
+        "visual_unit": "% 重复工作",
+        "visual_trend": "up",
+        "icon": "📊",
+        "visual_style": "cyberpunk, clean digital",
+        "mood": "serious",
+        "layout_hint": "spotlight center",
+        "duration": 2.0,
+        "animation": "scale_in"
+      },
+      {
         "type": "comparison",
-        "visual_left": "人（手持购物袋）",
-        "visual_right": "算法（流动代码与光点）",
-        "visual_style": "digital, holographic, glitch",
-        "mood": "mysterious",
+        "visual_left": "传统：手动处理",
+        "visual_right": "Locus Founder：AI自动化",
+        "icon": "⚖️",
+        "visual_style": "futuristic, split screen",
+        "mood": "dramatic",
         "layout_hint": "split left-right",
-        "icon": "code",
-        "animation": "fade_in",
-        "notes": "左右分屏，左边是人影剪影和生活化图标，右边是抽象算法网络，形成视觉对比。"
+        "duration": 1.46,
+        "animation": "slide_up"
       },
       {
-        "id": 3,
-        "audio_segment": "段3: 4.8s - 7.9s",
-        "duration": 3.04,
         "type": "keyword_burst",
         "visual_keywords": [
-          "悄悄",
-          "改变",
-          "匹配",
-          "训练"
+          "一句话描述任务",
+          "AI理解意图",
+          "自动执行"
         ],
-        "visual_style": "matrix, data stream, surreal",
-        "mood": "dramatic",
-        "layout_hint": "wide spread",
-        "icon": "brain",
-        "animation": "zoom_in",
-        "notes": "四个关键词从不同方向以故障风弹入屏幕，背景为流动的数据流或神经网络图。"
-      },
-      {
-        "id": 4,
-        "audio_segment": "段4: 8.1s - 11.7s",
-        "duration": 3.68,
-        "type": "image_text",
-        "image_query": "smartphone notification array online shopping, abstract digital interface",
-        "text": "你以为的 → 平台匹配的",
-        "visual_style": "cyberpunk, clean, holographic",
-        "mood": "dramatic",
-        "layout_hint": "split left-right",
-        "icon": "lightbulb",
-        "animation": "fade_in",
-        "notes": "图片展示密集推送信息的手机屏幕。上半部图片，下半部左右分列“你以为的”和“平台匹配的”，用箭头连接，强调引导关系。"
-      },
-      {
-        "id": 5,
-        "audio_segment": "段5: 12.0s - 14.6s",
-        "duration": 2.56,
-        "type": "data_card",
-        "visual_label": "品味塑造率",
-        "visual_value": "100",
-        "visual_unit": "%",
-        "visual_trend": "up",
-        "visual_style": "digital, bold, vibrant",
-        "mood": "dramatic",
-        "layout_hint": "spotlight center",
-        "icon": "user-tag",
-        "animation": "scale_in",
-        "notes": "展示一个进度条或数字卡片，数值从0快速跳动到100%，标签为“品味塑造率”，暗示完全被影响。"
-      },
-      {
-        "id": 6,
-        "audio_segment": "段6: 14.8s - 18.8s",
-        "duration": 4.0,
-        "type": "comparison",
-        "visual_left": "你（人像剪影）",
-        "visual_right": "算法（抽象代码流）",
-        "visual_style": "glitch, dramatic, bold",
+        "icon": "✨",
+        "visual_style": "energetic, holographic",
         "mood": "inspiring",
-        "layout_hint": "split left-right",
-        "icon": "question-mark",
-        "animation": "scale_in",
-        "notes": "再次左右分屏，但中间放置一个巨大的、闪烁的“？”，问号带有glitch效果，强烈引发思考。"
+        "layout_hint": "wide spread",
+        "duration": 1.59,
+        "animation": "zoom_in"
       },
       {
-        "id": 7,
-        "audio_segment": "段7: 19.1s - 22.5s",
-        "duration": 3.36,
-        "type": "ending",
-        "text": "被“算”了多少？\n评论区见",
-        "visual_style": "vibrant, digital, hopeful",
+        "type": "image_text",
+        "visual_label": "集成平台",
+        "visual_text": "Slack / 邮件 / Web",
+        "icon": "🖼️",
+        "visual_style": "minimal, clean interface",
+        "mood": "calm",
+        "layout_hint": "left aligned",
+        "duration": 1.27,
+        "animation": "fade_in"
+      },
+      {
+        "type": "highlight",
+        "text": "告别重复",
+        "icon": "🚀",
+        "visual_style": "luxurious, golden glow",
         "mood": "hopeful",
         "layout_hint": "spotlight center",
-        "icon": "comment-dots",
-        "animation": "fade_in",
-        "notes": "大字提问“被‘算’了多少？”，下方“评论区见”配弹窗图标或二维码，引导互动。背景可是一个逐渐缩小的、象征选择权的进度条。"
+        "duration": 1.6,
+        "animation": "pulse"
+      },
+      {
+        "type": "ending",
+        "text": "评论区扣1\n获取保姆级教程",
+        "icon": "💬",
+        "visual_style": "warm elegant, hopeful",
+        "mood": "hopeful",
+        "layout_hint": "spotlight center",
+        "duration": 1.6,
+        "animation": "fade_out"
       }
-    ],
-    "title": "AI 资讯"
+    ]
   },
-  "durationInFrames": 659
+  "durationInFrames": 376
 }

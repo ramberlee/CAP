@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle, getStaggerDelay } from "../components/VisualInterpreter";
+import { computeStyle, getStaggerDelay, easeOutCubic } from "../components/VisualInterpreter";
 
 interface HighlightSceneProps {
   theme: ThemePalette; text: string; duration: number;

@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle, getStaggerDelay } from "../components/VisualInterpreter";
+import { computeStyle, getStaggerDelay, easeOutCubic } from "../components/VisualInterpreter";
 
 interface TextSequenceSceneProps {
   theme: ThemePalette; lines: string[]; duration: number;
@@ -37,26 +37,36 @@ const TextSequenceScene: React.FC<TextSequenceSceneProps> = ({
 
         {lines.map((line, i) => {
           const appearAt = i * lineInterval * 0.7;
-          const lineT = Math.max(0, Math.min(1, (t - appearAt) * 3));
+          const lineT = easeOutCubic(Math.max(0, Math.min(1, (t - appearAt) * 3)));
           const showDot = lineT > 0.3;
+
+          // Highlight the most recently appeared line
+          const nextAppearAt = (i + 1) * lineInterval * 0.7;
+          const isLatest = t >= appearAt && t < nextAppearAt;
+          const highlightPulse = isLatest ? 1 + 0.02 * Math.sin((t - appearAt) * 4) : 1;
+          const dotGlow = isLatest ? cs.glowIntensity * 40 : cs.glowIntensity * 20;
 
           return (
             <div key={i} style={{ display: "flex", flexDirection: "column", width: "100%" }}>
               <div style={{
                 display: "flex", alignItems: "center", gap: 20, padding: "18px 0",
-                opacity: lineT, transform: `translateX(${(1 - lineT) * (cs.motionStyle === "bold" ? 60 : 40)}px)`,
+                opacity: lineT, transform: `translateX(${(1 - lineT) * (cs.motionStyle === "bold" ? 60 : 40)}px) scale(${highlightPulse})`,
               }}>
                 <div style={{
-                  width: cs.glowIntensity > 0.5 ? 16 : 14, height: cs.glowIntensity > 0.5 ? 16 : 14,
+                  width: isLatest ? 18 : (cs.glowIntensity > 0.5 ? 16 : 14),
+                  height: isLatest ? 18 : (cs.glowIntensity > 0.5 ? 16 : 14),
                   borderRadius: "50%", flexShrink: 0,
                   background: showDot ? accent : theme.surfaceBorder,
-                  boxShadow: showDot && cs.glowIntensity > 0.3 ? `0 0 ${cs.glowIntensity * 20}px ${accent}60` : "none",
+                  boxShadow: showDot ? `0 0 ${dotGlow}px ${accent}60` : "none",
+                  transition: "width 0.2s, height 0.2s",
                 }} />
                 <div style={{
-                  fontSize: cs.fontSize * 0.9, fontWeight: cs.fontWeight,
+                  fontSize: isLatest ? cs.fontSize * 0.95 : cs.fontSize * 0.9,
+                  fontWeight: isLatest ? Math.min(900, cs.fontWeight + 200) : cs.fontWeight,
                   color: lineT > 0.5 ? (cs.textColorOverride || theme.text) : theme.textSecondary,
                   lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing,
                   maxWidth: cs.maxWidth,
+                  textShadow: isLatest && cs.glowIntensity > 0.3 ? `0 0 ${cs.glowIntensity * 15}px ${accent}30` : "none",
                 }}>{line}</div>
               </div>
               {i < lines.length - 1 && (

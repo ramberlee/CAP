@@ -59,22 +59,39 @@ class RemotionClient:
         for p in candidates:
             if os.path.isfile(p):
                 return p
+        # Fallback: use imageio_ffmpeg's bundled binary
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            if ffmpeg_exe and os.path.isfile(ffmpeg_exe):
+                logger.info(f"Using bundled ffmpeg: {ffmpeg_exe}")
+                return ffmpeg_exe
+        except ImportError:
+            pass
         logger.warning("ffmpeg not found in PATH or common locations. "
                        "Install ffmpeg from https://ffmpeg.org/download.html")
         return "ffmpeg"
 
     def _find_npx(self) -> str:
         """Locate the npx executable for running Remotion CLI."""
+        # First try shutil.which which checks PATH properly
+        found = shutil.which("npx") or shutil.which("npx.cmd")
+        if found:
+            logger.debug(f"Found npx via shutil.which: {found}")
+            return found
+
         candidates = [
-            "npx",
             r"C:\Program Files\nodejs\npx.cmd",
             r"C:\Program Files (x86)\nodejs\npx.cmd",
             os.path.expanduser(r"~\AppData\Roaming\npm\npx.cmd"),
             os.path.expanduser(r"~\AppData\Local\npm\npx.cmd"),
-            r"E:\nvm4w\nodejs\npx.cmd",
+            r"D:\nvm4w\nodejs\npx.cmd",
             os.path.expanduser(r"~\AppData\Local\nvm\npx.cmd"),
         ]
         for candidate in candidates:
+            if os.path.isfile(candidate):
+                logger.debug(f"Found npx at: {candidate}")
+                return candidate
             try:
                 result = subprocess.run([candidate, "--version"], capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
@@ -82,6 +99,15 @@ class RemotionClient:
                     return candidate
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 continue
+
+        # Last resort: search PATH directories manually
+        for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+            for name in ("npx.cmd", "npx"):
+                p = os.path.join(path_dir, name)
+                if os.path.isfile(p):
+                    logger.debug(f"Found npx in PATH: {p}")
+                    return p
+
         logger.warning("npx not found. Install Node.js from https://nodejs.org")
         return "npx"
 
@@ -186,6 +212,9 @@ registerRoot(RemotionRoot);
                 str(output_path),
                 "--props=./input.json",
                 "--overwrite",
+                "--codec", "h264",
+                "--crf", "18",
+                "--pixel-format", "yuv420p",
             ]
 
             if self.browser_executable:
@@ -215,16 +244,18 @@ registerRoot(RemotionRoot);
                 logger.error(f"Remotion render failed:\n{result.stderr}")
                 return None
 
-            if output_path.exists():
-                logger.info(f"Video rendered: {output_path}")
-                return self._merge_audio(output_path, audio_path, plan_duration)
+            # Remotion CLI auto-adds .mp4 when no extension is specified
+            output_with_ext = output_path.with_suffix(".mp4")
+            if output_with_ext.exists():
+                logger.info(f"Video rendered: {output_with_ext}")
+                return self._merge_audio(output_with_ext, audio_path, plan_duration)
 
             # Try alternative output path in remotion project directory
-            alt_path = self.project_dir.resolve() / "out" / filename
+            alt_path = (self.project_dir.resolve() / "out" / filename).with_suffix(".mp4")
             if alt_path.exists():
                 logger.info(f"Video rendered (alt path): {alt_path}")
-                shutil.copy2(str(alt_path), str(output_path))
-                return self._merge_audio(output_path, audio_path, plan_duration)
+                shutil.copy2(str(alt_path), str(output_with_ext))
+                return self._merge_audio(output_with_ext, audio_path, plan_duration)
 
             logger.error("Remotion render completed but output not found")
             return None
@@ -320,6 +351,7 @@ registerRoot(RemotionRoot);
                 "-i", str(audio_path),
                 "-c:v", "copy",
                 "-c:a", "aac",
+                "-b:a", "192k",
                 "-map", "0:v:0",
                 "-map", "1:a:0",
             ]

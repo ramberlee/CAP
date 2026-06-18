@@ -236,8 +236,10 @@ config.yaml
 remotion/node_modules/*
 remotion/chrome/*
 remotion/chrome-win64/*
+remotion/public/*
 chrome*
 .codegraph/*
 .reasonix/*
 .playwright-mcp/*
 .vscode/*
+data/*

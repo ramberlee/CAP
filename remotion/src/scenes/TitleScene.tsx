@@ -2,7 +2,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { SceneWrapper } from "./SceneWrapper";
 import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle, getStaggerDelay } from "../components/VisualInterpreter";
+import { computeStyle, getStaggerDelay, easeOutCubic } from "../components/VisualInterpreter";
 
 interface TitleSceneProps {
   theme: ThemePalette;
@@ -45,7 +45,7 @@ const TitleScene: React.FC<TitleSceneProps> = ({
 
         {lines.map((line, i) => {
           const delay = getStaggerDelay(i, lines.length, cs.entrancePattern, 0.3);
-          const lineT = Math.max(0, Math.min(1, (t - delay) * 2));
+          const lineT = easeOutCubic(Math.max(0, Math.min(1, (t - delay) * 2)));
           const isMain = i === 0;
 
           return (
