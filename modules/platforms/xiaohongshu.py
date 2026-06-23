@@ -18,6 +18,28 @@ logger = logging.getLogger(__name__)
 PUBLISH_URL = "https://creator.xiaohongshu.com/publish/publish"
 
 
+# ---------------------------------------------------------------------------
+# Content processing (platform limits)
+# ---------------------------------------------------------------------------
+
+def process_content(title: str, body: str, tags: list[str] | None = None) -> tuple[str, str]:
+    """Enforce Xiaohongshu platform limits on title and body.
+
+    Returns (title, body) after truncation.
+    """
+    if len(title) > 20:
+        logger.info(f"  Title truncated: {len(title)} -> 20 chars")
+        title = title[:20]
+
+    tags_text = " ".join(tags) if tags else ""
+    max_body = 950 - len(tags_text) - 2 if tags_text else 950
+    if len(body) > max_body:
+        logger.info(f"  Body truncated: {len(body)} -> {max_body} chars")
+        body = body[:max_body].rsplit("。", 1)[0] + "。"
+
+    return title, body
+
+
 class XiaohongshuPublisher:
     """Publishes content to Xiaohongshu via Playwright browser automation.
 

@@ -120,56 +120,47 @@ class ContentGenerator:
         result["tags"] = fallback_tags[:5]
         logger.info(f"Auto-generated tags: {result['tags']}")
 
-    def _validate_douyin_script(self, result: dict) -> None:
-        """Validate douyin script quality and log warnings for issues.
+    def _validate_and_repair(self, result: dict, platform: str, category: str) -> dict:
+        """Generic platform content validation and repair dispatch."""
+        from modules.platforms import get_validator, get_repairer
 
-        Non-blocking: logs warnings but does not discard the content.
-        """
-        script = result.get("script", result.get("body", ""))
-        tags = result.get("tags", [])
-        warnings = []
+        validator = get_validator(platform)
+        if not validator:
+            return result
 
-        # Check three-part structure
-        has_hook = "【钩子】" in script
-        has_value = "【价值】" in script
-        has_ending = "【收尾】" in script
-        if not (has_hook and has_value and has_ending):
-            missing = []
-            if not has_hook:
-                missing.append("【钩子】")
-            if not has_value:
-                missing.append("【价值】")
-            if not has_ending:
-                missing.append("【收尾】")
-            warnings.append(f"缺少三段结构: {', '.join(missing)}")
+        # Douyin validator is non-blocking (warnings only), no repair needed
+        if platform == "douyin":
+            validator(result, category=category)
+            return result
 
-        # Check separator
-        if "---" not in script:
-            warnings.append("缺少 --- 分隔符")
+        # LLM-based validation with repair loop
+        platform_cfg = self.config.get("platforms", {}).get(platform, {})
+        if not platform_cfg.get("validate_content", False):
+            return result
 
-        # Check word count (200-800 chars for Chinese scripts)
-        char_count = len(script)
-        if char_count < 200:
-            warnings.append(f"脚本过短 ({char_count}字)，建议200-800字")
-        elif char_count > 800:
-            warnings.append(f"脚本过长 ({char_count}字)，建议200-800字")
+        repairer = get_repairer(platform)
+        max_repair = platform_cfg.get("max_repair", 1)
 
-        # Check tags
-        if len(tags) < 3:
-            warnings.append(f"标签不足 ({len(tags)}个)，建议3-5个")
-        elif len(tags) > 5:
-            warnings.append(f"标签过多 ({len(tags)}个)，建议3-5个")
+        for attempt in range(max_repair + 1):
+            issues = validator(result, category=category, client=self.client, model=self.model)
+            if not issues:
+                break
+            if attempt < max_repair and repairer:
+                logger.info(f"[{platform}质量校验] 第 {attempt+1} 次修复...")
+                repaired = repairer(
+                    result, issues, category=category,
+                    client=self.client, model=self.model,
+                    max_tokens=self.gen_config.get("max_tokens", 4096),
+                )
+                if repaired:
+                    result = repaired
+                else:
+                    logger.warning(f"[{platform}质量校验] 修复失败，使用当前版本")
+                    break
+            else:
+                logger.warning(f"[{platform}质量校验] 已达最大修复次数 ({max_repair})，使用当前版本")
 
-        ai_tag_found = any("AI" in t.upper() or "人工智能" in t for t in tags)
-        if not ai_tag_found:
-            warnings.append("缺少 #AI 相关标签")
-
-        # Log warnings
-        if warnings:
-            for w in warnings:
-                logger.warning(f"[抖音质量校验] {w}")
-        else:
-            logger.info("[抖音质量校验] 脚本质量合格")
+        return result
 
     def _generate_for_platform(self, topic: str, platform: str, category: str = "dao") -> Optional[dict]:
         """Generate content for a specific platform."""
@@ -206,9 +197,8 @@ class ContentGenerator:
             if not result.get("tags"):
                 self._ensure_tags(result, category)
 
-            # Validate douyin script quality
-            if platform == "douyin":
-                self._validate_douyin_script(result)
+            # Platform-specific validation & repair (delegated to platform modules)
+            result = self._validate_and_repair(result, platform, category)
 
             return result
 
@@ -875,17 +865,11 @@ class ContentGenerator:
             tags = result.get("tags", [])
             description = result.get("description", "")
 
-            # Enforce Xiaohongshu limits
-            if platform == "xiaohongshu":
-                if len(title) > 20:
-                    logger.info(f"  Title truncated: {len(title)} -> 20 chars")
-                    title = title[:20]
-                # Body limit: 1000 chars minus tags space
-                tags_text = " ".join(tags) if tags else ""
-                max_body = 950 - len(tags_text) - 2 if tags_text else 950
-                if len(body) > max_body:
-                    logger.info(f"  Body truncated: {len(body)} -> {max_body} chars")
-                    body = body[:max_body].rsplit("。", 1)[0] + "。"
+            # Platform-specific content processing (delegated to platform modules)
+            from modules.platforms import get_processor
+            processor = get_processor(platform)
+            if processor:
+                title, body = processor(title, body, tags)
 
             # Process inline images
             content_id = topic_id * 100 + len(file_paths)

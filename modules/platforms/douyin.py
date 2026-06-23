@@ -11,6 +11,61 @@ logger = logging.getLogger(__name__)
 UPLOAD_URL = "https://creator.douyin.com/creator-micro/content/upload"
 
 
+# ---------------------------------------------------------------------------
+# Content validation (rule-based)
+# ---------------------------------------------------------------------------
+
+def validate_content(result: dict, **_) -> list[str]:
+    """Validate douyin script quality. Returns list of warnings (non-blocking)."""
+    script = result.get("script", result.get("body", ""))
+    tags = result.get("tags", [])
+    warnings = []
+
+    # Check three-part structure
+    has_hook = "【钩子】" in script
+    has_value = "【价值】" in script
+    has_ending = "【收尾】" in script
+    if not (has_hook and has_value and has_ending):
+        missing = []
+        if not has_hook:
+            missing.append("【钩子】")
+        if not has_value:
+            missing.append("【价值】")
+        if not has_ending:
+            missing.append("【收尾】")
+        warnings.append(f"缺少三段结构: {', '.join(missing)}")
+
+    # Check separator
+    if "---" not in script:
+        warnings.append("缺少 --- 分隔符")
+
+    # Check word count (200-800 chars for Chinese scripts)
+    char_count = len(script)
+    if char_count < 200:
+        warnings.append(f"脚本过短 ({char_count}字)，建议200-800字")
+    elif char_count > 800:
+        warnings.append(f"脚本过长 ({char_count}字)，建议200-800字")
+
+    # Check tags
+    if len(tags) < 3:
+        warnings.append(f"标签不足 ({len(tags)}个)，建议3-5个")
+    elif len(tags) > 5:
+        warnings.append(f"标签过多 ({len(tags)}个)，建议3-5个")
+
+    ai_tag_found = any("AI" in t.upper() or "人工智能" in t for t in tags)
+    if not ai_tag_found:
+        warnings.append("缺少 #AI 相关标签")
+
+    # Log warnings
+    if warnings:
+        for w in warnings:
+            logger.warning(f"[抖音质量校验] {w}")
+    else:
+        logger.info("[抖音质量校验] 脚本质量合格")
+
+    return warnings
+
+
 class DouyinPublisher:
     """Publishes content to Douyin via Playwright browser automation.
 

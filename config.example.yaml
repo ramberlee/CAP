@@ -105,6 +105,10 @@ platforms:
     mode: "draft"
     # 排版主题: claude / apple / wechat / notion
     theme: "claude"
+    # 生成后是否用 LLM 校验内容质量（不达标则自动修复）
+    validate_content: true
+    # 最大修复次数（每次修复消耗一次 LLM 调用）
+    max_repair: 1
 
   xiaohongshu:
     enabled: true                    # 是否启用该平台（内容生成 + 发布）
