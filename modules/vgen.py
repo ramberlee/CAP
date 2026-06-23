@@ -11,6 +11,7 @@ import requests
 import dashscope
 from dashscope import VideoSynthesis
 from modules.agnes_client import AgnesClient
+from modules.ark_client import ArkClient
 from modules.remotion_client import RemotionClient
 from modules.video_planner import AudioPlanner, VideoPlanner
 
@@ -52,6 +53,10 @@ class VideoGenerator:
             self.agnes_client = AgnesClient(config)
             self.remotion_client = None
             logger.info(f"VideoGenerator using Agnes AI backend (model: {self.agnes_client.video_model})")
+        elif self.provider == "ark":
+            self.ark_client = ArkClient(config)
+            self.remotion_client = None
+            logger.info(f"VideoGenerator using Ark backend (model: {self.ark_client.video_model})")
         elif self.provider == "remotion":
             self.remotion_client = RemotionClient(config)
             logger.info(f"VideoGenerator using Remotion backend (project: {self.remotion_client.project_dir})")
@@ -219,6 +224,9 @@ class VideoGenerator:
         if self.provider == "agnes":
             return self._generate_agnes(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration, scene_timings=scene_timings)
 
+        if self.provider == "ark":
+            return self._generate_ark(prompt, filename, subtitles=subtitles, keywords=keywords, audio_duration=audio_duration, scene_timings=scene_timings)
+
         # DashScope backend
         if not self.api_key:
             logger.warning("DashScope API key not configured, skipping video generation")
@@ -334,6 +342,23 @@ class VideoGenerator:
             height=height,
             num_frames=num_frames,
             frame_rate=fps,
+        )
+        if video_path:
+            return self._finalize_video(video_path, subtitles, keywords, audio_duration, scene_timings)
+        return None
+
+    def _generate_ark(self, prompt: str, filename: str, subtitles: str | None = None, keywords: list[str] | None = None, audio_duration: float | None = None, scene_timings: list[dict] | None = None) -> str | None:
+        """Generate video using Volcano Ark API."""
+        logger.info(f"Generating video via Ark: {prompt[:80]}...")
+
+        # Pick API duration: smallest supported value that covers the audio
+        api_duration = self._pick_api_duration(audio_duration or self.duration)
+        logger.info(f"Ark API duration: {api_duration}s (audio: {audio_duration}s)")
+
+        video_path = self.ark_client.generate_video(
+            prompt=prompt,
+            filename=filename,
+            duration=api_duration,
         )
         if video_path:
             return self._finalize_video(video_path, subtitles, keywords, audio_duration, scene_timings)

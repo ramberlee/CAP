@@ -27,9 +27,11 @@ generation:
   auto_image: true
   # 自动生成视频（抖音等视频平台）
   auto_video: true
-  # 生图后端选择: dashscope(默认) / agnes
+  # 文本/推理模型后端: mimo(默认) / ark
+  text_provider: "mimo"
+  # 生图后端选择: dashscope(默认) / agnes / ark
   image_provider: "dashscope"
-  # 生视频后端选择: dashscope(默认) / agnes / remotion(文字动画，免费)
+  # 生视频后端选择: dashscope(默认) / agnes / remotion(文字动画，免费) / ark
   video_provider: "dashscope"
   # 是否自动给生成的视频添加字幕
   video_subtitles: true
@@ -80,6 +82,32 @@ agnes:
   video_height: 768                       # 视频高度
   video_num_frames: 121                   # 帧数 (必须是 8n+1，且 ≤ 441)
   video_frame_rate: 24                    # 帧率 (1-60)
+
+# 火山方舟 Ark 配置（OpenAI 兼容）
+ark:
+  api_key: ""                             # 火山方舟 API Key（控制台 → API Key 管理）
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: ""                               # 推理/Agent 模型（如 deepseek-r1-250528，留空使用默认）
+  # 文生图模型
+  image_model: ""                         # 如 doubao-seedream-2.0-t2i-250529
+  image_size: "1472*1104"                 # 图片分辨率
+  # 文生视频模型
+  video_model: ""                         # 如 doubao-seedance-1.0-pro-250528
+  video_size: "1280*720"                  # 视频分辨率
+  # TTS 语音合成（OpenAI 兼容格式，同 chat/completions 的 audio 参数）
+  tts_model: ""                           # 如 doubao-tts-1.0
+  tts_voice: "zh_female_shuangkuaisisi_moon_bigtts"
+  # Planner 模型（留空则复用 model）
+  planner_model: ""
+  # 媒体保存目录
+  media_dir: "media"
+
+  # ASR 语音识别配置（火山方舟 WebSocket API）
+  asr_enabled: false                         # 是否启用语音识别
+  asr_mode: "nostream"                       # nostream(单流，高精度) / async(双流，实时)
+  asr_segment_duration: 200                  # 每段音频时长(ms)
+  asr_sample_rate: 16000                     # 音频采样率(Hz)
+  asr_resource_id: "volc.seedasr.sauc.duration"  # ASR 资源 ID
 
 # 热点监控
 monitor:

@@ -1,4 +1,4 @@
-"""Image generation module with DashScope and Agnes backends."""
+"""Image generation module with DashScope, Agnes, and Ark backends."""
 
 import logging
 import time
@@ -7,6 +7,7 @@ import requests
 import dashscope
 from dashscope import ImageSynthesis, MultiModalConversation
 from modules.agnes_client import AgnesClient
+from modules.ark_client import ArkClient
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ QWEN_V2_MODELS = {
 
 class ImageGenerator:
     def __init__(self, config: dict):
-        # Determine provider: "dashscope" (default) or "agnes"
+        # Determine provider: "dashscope" (default), "agnes", or "ark"
         gen_config = config.get("generation", {})
         self.provider = gen_config.get("image_provider", "dashscope")
 
@@ -36,6 +37,9 @@ class ImageGenerator:
         if self.provider == "agnes":
             self.agnes_client = AgnesClient(config)
             logger.info(f"ImageGenerator using Agnes AI backend (model: {self.agnes_client.image_model})")
+        elif self.provider == "ark":
+            self.ark_client = ArkClient(config)
+            logger.info(f"ImageGenerator using Ark backend (model: {self.ark_client.image_model})")
         else:
             # Configure DashScope SDK
             dashscope.api_key = self.api_key
@@ -44,6 +48,8 @@ class ImageGenerator:
         """Generate an image from a text prompt. Returns local file path or None."""
         if self.provider == "agnes":
             return self._generate_agnes(prompt, filename)
+        if self.provider == "ark":
+            return self._generate_ark(prompt, filename)
 
         # DashScope backend
         if not self.api_key:
@@ -69,6 +75,22 @@ class ImageGenerator:
             logger.info(f"Agnes AI 图片生成成功: {filename}")
         else:
             logger.error(f"Agnes AI 图片生成失败: {prompt[:50]}...")
+        return result
+
+    def _generate_ark(self, prompt: str, filename: str) -> str | None:
+        """Generate using Ark API (OpenAI-compatible /v3/images/generations)."""
+        logger.info(f"Generating image via Ark: {prompt[:50]}...")
+        # Convert size format from "1472*1104" to "1472x1104"
+        ark_size = self.size.replace("*", "x")
+        result = self.ark_client.generate_image(
+            prompt=prompt,
+            filename=filename,
+            size=ark_size,
+        )
+        if result:
+            logger.info(f"Ark 图片生成成功: {filename}")
+        else:
+            logger.error(f"Ark 图片生成失败: {prompt[:50]}...")
         return result
 
     def _generate_v2(self, prompt: str, filename: str) -> str | None:

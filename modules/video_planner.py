@@ -109,10 +109,20 @@ class AudioPlanner:
     """Generates audio narration scripts from douyin source material using LLM."""
 
     def __init__(self, config: dict):
-        mimo_config = config.get("mimo", {})
-        api_key = mimo_config.get("api_key", "")
-        base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
-        self.model = mimo_config.get("planner_model", mimo_config.get("model", "mimo-v2.5-pro"))
+        gen_config = config.get("generation", {})
+        text_provider = gen_config.get("text_provider", "mimo")
+
+        if text_provider == "ark":
+            ark_config = config.get("ark", {})
+            api_key = ark_config.get("api_key", "")
+            base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3")
+            self.model = ark_config.get("planner_model") or ark_config.get("model", "deepseek-r1-250528")
+        else:
+            mimo_config = config.get("mimo", {})
+            api_key = mimo_config.get("api_key", "")
+            base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
+            self.model = mimo_config.get("planner_model", mimo_config.get("model", "mimo-v2.5-pro"))
+
         self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
 
     def plan(
@@ -127,7 +137,7 @@ class AudioPlanner:
             dict with keys: narration, segments, voice_direction — or None on failure.
         """
         if not self.client or not self.client.api_key:
-            logger.warning("MiMo API key not configured, using fallback audio plan")
+            logger.warning("LLM API key not configured, using fallback audio plan")
             return self._fallback_audio_plan(script, title)
 
         try:
@@ -467,10 +477,20 @@ class VideoPlanner:
     """
 
     def __init__(self, config: dict):
-        mimo_config = config.get("mimo", {})
-        api_key = mimo_config.get("api_key", "")
-        base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
-        self.model = mimo_config.get("planner_model", mimo_config.get("model", "mimo-v2.5-pro"))
+        gen_config = config.get("generation", {})
+        text_provider = gen_config.get("text_provider", "mimo")
+
+        if text_provider == "ark":
+            ark_config = config.get("ark", {})
+            api_key = ark_config.get("api_key", "")
+            base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3")
+            self.model = ark_config.get("planner_model") or ark_config.get("model", "deepseek-r1-250528")
+        else:
+            mimo_config = config.get("mimo", {})
+            api_key = mimo_config.get("api_key", "")
+            base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
+            self.model = mimo_config.get("planner_model", mimo_config.get("model", "mimo-v2.5-pro"))
+
         self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
 
     def _generate_custom_system_prompt(
@@ -557,7 +577,7 @@ class VideoPlanner:
             Composition plan dict, or None on failure.
         """
         if not self.client or not self.client.api_key:
-            logger.warning("MiMo API key not configured, skipping video planning")
+            logger.warning("LLM API key not configured, skipping video planning")
             return self._fallback_plan(script, title, total_duration)
 
         audio_timeline = _format_audio_timeline(audio_timings)

@@ -22,14 +22,14 @@ VIDEO_PLACEHOLDER_RE = re.compile(r"\[VIDEO:(.*?)]")
 
 CATEGORY_SYSTEM_PROMPTS = {
     "dao": (
-        "你是MiMo，是小米公司研发的AI智能助手。"
+        "你是一个AI领域的内容创作专家。"
         "你正在为一个AI领域的内容账号创作「道」系列内容，账号定位是：「AI时代必备心法。在这里，看懂AI的道与术。」"
         "「道」系列关注社会趋势、人性洞察、时代变迁，用AI思维提供独特的观察视角。"
         "内容要求：从宏观视角解读社会热点，提供认知升级的洞察，而非就事论事。"
         "请严格按照要求的JSON格式输出。"
     ),
     "shu": (
-        "你是MiMo，是小米公司研发的AI智能助手。"
+        "你是一个AI领域的内容创作专家。"
         "你正在为一个AI领域的内容账号创作「术」系列内容，账号定位是：「AI时代必备心法。在这里，看懂AI的道与术。」"
         "「术」系列关注AI技术本身，解读技术原理、应用场景、实操方法。"
         "内容要求：有具体的技术细节、工具名称、使用方法，提供实操价值，而非泛泛而谈。"
@@ -52,12 +52,21 @@ class ContentGenerator:
     def __init__(self, db: Database, config: dict):
         self.db = db
         self.config = config
-        mimo_config = config.get("mimo", {})
-        api_key = mimo_config.get("api_key", "")
-        base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
-        self.model = mimo_config.get("model", "mimo-v2.5-pro")
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.gen_config = config.get("generation", {})
+        self.text_provider = self.gen_config.get("text_provider", "mimo")
+
+        if self.text_provider == "ark":
+            ark_config = config.get("ark", {})
+            api_key = ark_config.get("api_key", "")
+            base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3")
+            self.model = ark_config.get("model", "deepseek-r1-250528")
+        else:
+            mimo_config = config.get("mimo", {})
+            api_key = mimo_config.get("api_key", "")
+            base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
+            self.model = mimo_config.get("model", "mimo-v2.5-pro")
+
+        self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
         self.auto_image = self.gen_config.get("auto_image", False)
         self.imager = ImageGenerator(config) if self.auto_image else None
         self.auto_video = self.gen_config.get("auto_video", False)
