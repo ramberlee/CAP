@@ -285,10 +285,14 @@ class ContentGenerator:
         """
         if not self.imager:
             # No imager, just strip placeholders
+            placeholder_count = len(list(IMAGE_PLACEHOLDER_RE.finditer(body)))
+            if placeholder_count > 0:
+                logger.info(f"auto_image 未启用，已移除 {placeholder_count} 个 [IMAGE:...] 占位符")
             return IMAGE_PLACEHOLDER_RE.sub("", body), []
 
         placeholders = list(IMAGE_PLACEHOLDER_RE.finditer(body))
         if not placeholders:
+            logger.info("正文中无 [IMAGE:...] 占位符，跳过配图")
             return body, []
 
         # Prepare output media dir for this platform
@@ -314,10 +318,16 @@ class ContentGenerator:
                 rel_path = f"media/{src.name}"
                 processed = processed.replace(match.group(0), f"\n\n![配图]({rel_path})\n", 1)
                 media_urls.append(str(dst))
+                logger.info(f"图片生成成功 [{i+1}/{len(placeholders)}]: {dst}")
             else:
                 # Remove placeholder if generation failed
                 processed = processed.replace(match.group(0), "", 1)
+                logger.warning(f"图片生成失败 [{i+1}/{len(placeholders)}]: {desc[:50]}...，已移除占位符")
 
+        total = len(placeholders)
+        success = len(media_urls)
+        failed = total - success
+        logger.info(f"配图处理完成: 成功 {success}/{total}，失败 {failed}/{total}")
         return processed, media_urls
 
     def _generate_voice_prompt(self, script_text: str, category: str = "dao") -> str | None:

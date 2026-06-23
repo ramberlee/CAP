@@ -104,6 +104,7 @@ class AgnesClient:
                 logger.error(f"No image URL in Agnes AI response: {result}")
                 return None
 
+            logger.info(f"Agnes AI 图片 API 返回成功，image_url: {image_url[:80]}...")
             return self._download_file(image_url, filename)
 
         except requests.exceptions.Timeout:

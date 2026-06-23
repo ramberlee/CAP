@@ -60,11 +60,16 @@ class ImageGenerator:
         logger.info(f"Generating image via Agnes AI: {prompt[:50]}...")
         # Convert size format from "1472*1104" to "1472x1104" for Agnes API
         agnes_size = self.size.replace("*", "x")
-        return self.agnes_client.generate_image(
+        result = self.agnes_client.generate_image(
             prompt=prompt,
             filename=filename,
             size=agnes_size,
         )
+        if result:
+            logger.info(f"Agnes AI 图片生成成功: {filename}")
+        else:
+            logger.error(f"Agnes AI 图片生成失败: {prompt[:50]}...")
+        return result
 
     def _generate_v2(self, prompt: str, filename: str) -> str | None:
         """Generate using MultiModalConversation SDK (sync, qwen-image-2.0*)."""
