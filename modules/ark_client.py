@@ -3,9 +3,9 @@
 Volcano Ark provides a mix of OpenAI-compatible and custom APIs:
     Chat:      POST {base_url}/chat/completions
     Image:     POST {base_url}/images/generations
-    TTS:       POST https://openspeech.bytedance.com/api/v3/plan/tts/unidirectional
+    TTS:       POST {base_url}/plan/tts/unidirectional
                (HTTP chunked JSON + base64 audio, X-Api-Key auth)
-    Video:     Uses the Volcengine unified API endpoint with Ark API Key.
+    Video:     POST {base_url}/video/generations, GET {base_url}/video/query
 
 Usage in config.yaml:
     ark:
@@ -29,11 +29,6 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Volcengine unified API for video generation (requires Ark API Key via Authorization header)
-VOLC_VIDEO_ENDPOINT = "https://api.volcengine.com/api/open/v1/video/generations"
-# Video query endpoint
-VOLC_VIDEO_QUERY_ENDPOINT = "https://api.volcengine.com/api/open/v1/video/query"
-
 
 class ArkClient:
     """Unified client for Volcano Ark AI APIs."""
@@ -44,6 +39,9 @@ class ArkClient:
         self.base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3")
         # Normalize: remove trailing slash
         self.base_url = self.base_url.rstrip("/")
+        self.video_generation_url = f"{self.base_url}/video/generations"
+        self.video_query_url = f"{self.base_url}/video/query"
+        self.tts_url = f"{self.base_url}/plan/tts/unidirectional"
 
         # Models
         self.chat_model = ark_config.get("model") or "deepseek-r1-250528"
@@ -206,7 +204,7 @@ class ArkClient:
         try:
             logger.info(f"Ark video generation request: {self.video_model} | {prompt[:60]}...")
             resp = requests.post(
-                VOLC_VIDEO_ENDPOINT,
+                self.video_generation_url,
                 headers=self.headers,
                 json=data,
                 timeout=120,
@@ -244,7 +242,7 @@ class ArkClient:
 
             try:
                 resp = requests.get(
-                    VOLC_VIDEO_QUERY_ENDPOINT,
+                    self.video_query_url,
                     headers=self.headers,
                     params={"task_id": task_id},
                     timeout=30,
@@ -287,8 +285,6 @@ class ArkClient:
 
     # ─── TTS (TEXT-TO-SPEECH) ───────────────────────────────────
 
-    # Ark TTS uses the openspeech HTTP endpoint (not the standard Ark base_url)
-    TTS_URL = "https://openspeech.bytedance.com/api/v3/plan/tts/unidirectional"
     TTS_RESOURCE_ID = "seed-tts-2.0"
 
     @property
@@ -313,7 +309,7 @@ class ArkClient:
     ) -> Optional[str]:
         """Generate speech audio from text via Ark TTS HTTP chunked API.
 
-        Uses the openspeech HTTP endpoint with chunked JSON + base64 audio
+        Uses the configured Ark base_url with chunked JSON + base64 audio
         (as documented in 接入语音模型.md).
 
         Args:
@@ -356,7 +352,7 @@ class ArkClient:
         try:
             logger.info(f"Ark TTS (HTTP chunked): speaker={voice or self.tts_voice} | {text[:60]}...")
             response = session.post(
-                self.TTS_URL,
+                self.tts_url,
                 headers=self._tts_headers,
                 json=payload,
                 stream=True,

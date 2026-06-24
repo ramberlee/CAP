@@ -687,6 +687,7 @@ class ASRTranscriber:
     def __init__(self, config: dict):
         ark_config = config.get("ark", {})
         self.api_key = ark_config.get("api_key", "")
+        self.base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
         self.resource_id = ark_config.get(
             "asr_resource_id", "volc.seedasr.sauc.duration"
         )
@@ -695,16 +696,12 @@ class ASRTranscriber:
         self.sample_rate = ark_config.get("asr_sample_rate", 16000)
         self.enabled = ark_config.get("asr_enabled", False)
 
-        # Resolve WebSocket URL and mode flag based on asr_mode
+        ws_base_url = self.base_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
         if self.mode == "async":
-            self.ws_url = (
-                "wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async"
-            )
+            self.ws_url = f"{ws_base_url}/plan/sauc/bigmodel_async"
             self._enable_nonstream = False
         else:
-            self.ws_url = (
-                "wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_nostream"
-            )
+            self.ws_url = f"{ws_base_url}/plan/sauc/bigmodel_nostream"
             self._enable_nonstream = True
 
     def transcribe(self, audio_path: str, timeout: float = 300.0) -> Optional[str]:
