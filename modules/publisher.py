@@ -4,6 +4,7 @@ import logging
 from rich.console import Console
 from rich.prompt import Confirm
 from modules.content_store import ContentStore
+from modules.config_model import AppConfig
 from modules.platforms.wechat import WeChatPublisher
 from modules.platforms.xiaohongshu import XiaohongshuPublisher
 from modules.platforms.douyin import DouyinPublisher
@@ -19,17 +20,17 @@ _PUBLISHER_CLASSES = {
 
 
 class PublishDispatcher:
-    def __init__(self, config: dict):
+    def __init__(self, config: AppConfig, store: ContentStore | None = None):
         self.config = config
-        self.store = ContentStore(
-            output_dir=config.get("output_dir", "output"),
-            media_dir=config.get("dashscope", {}).get("media_dir", "media"),
+        self.store = store or ContentStore(
+            output_dir=config.output_dir,
+            media_dir=config.dashscope.media_dir,
         )
-        platforms_config = config.get("platforms", {})
         self._publishers = {}
         for name, cls in _PUBLISHER_CLASSES.items():
-            if platforms_config.get(name, {}).get("enabled", False):
-                self._publishers[name] = cls(platforms_config.get(name, {}))
+            plat = getattr(config.platforms, name, None)
+            if plat and plat.enabled:
+                self._publishers[name] = cls(plat)
 
     def publish_content(self, content: dict, dry_run: bool = False) -> dict:
         """Publish a single content item."""

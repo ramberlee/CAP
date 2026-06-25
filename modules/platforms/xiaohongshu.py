@@ -47,10 +47,10 @@ class XiaohongshuPublisher:
     First run: run tools/xhs_login.py to save cookies.
     """
 
-    def __init__(self, config: dict):
-        self.cookie_file = config.get("cookie_file", "db/xhs_cookies.json")
-        self.headless = config.get("headless", False)
-        self.channel = config.get("channel", "chrome")
+    def __init__(self, config: "XiaohongshuPlatformConfig"):
+        self.cookie_file = config.cookie_file
+        self.headless = config.headless
+        self.channel = config.channel
 
     def _save_cookies(self, context):
         cookies = context.cookies()

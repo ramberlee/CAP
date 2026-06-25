@@ -2,6 +2,9 @@
 
 Renders videos using the Remotion framework (React-based).
 Handles npx/ffmpeg discovery, rendering via CLI, and audio merging.
+
+Internal implementation detail of RemotionVideoProvider — do not import
+from outside modules/providers/remotion/.
 """
 
 import json
@@ -11,25 +14,25 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from ...config_model import AppConfig
+
 logger = logging.getLogger(__name__)
 
 
 class RemotionClient:
     """Client for rendering videos via Remotion CLI."""
 
-    def __init__(self, config: dict):
-        remotion_config = config.get("remotion", {})
-        self.project_dir = Path(remotion_config.get("project_dir", "remotion"))
-        self.fps = remotion_config.get("fps", 30)
-        self.browser_executable = remotion_config.get("browser_executable", None)
+    def __init__(self, config: AppConfig):
+        self.project_dir = Path(config.remotion.project_dir)
+        self.fps = config.remotion.fps
+        self.browser_executable = config.remotion.browser_executable
         # Resolve relative paths to absolute (paths in config are relative to project root)
         if self.browser_executable and not os.path.isabs(self.browser_executable):
             self.browser_executable = os.path.abspath(self.browser_executable)
-        self.chrome_flags = remotion_config.get("chrome_flags", "")
+        self.chrome_flags = config.remotion.chrome_flags
 
         # Media output directory
-        ds_config = config.get("dashscope", {})
-        self.media_dir = Path(ds_config.get("media_dir", "media"))
+        self.media_dir = Path(config.dashscope.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
         # Locate external tools

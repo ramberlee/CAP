@@ -9,6 +9,7 @@ from pathlib import Path
 import requests
 
 from .. import ImageProvider
+from ...config_model import ArkConfig
 
 logger = logging.getLogger(__name__)
 
@@ -16,14 +17,12 @@ logger = logging.getLogger(__name__)
 class ArkImageProvider(ImageProvider):
     """Image generation via Volcano Ark (OpenAI-compatible API)."""
 
-    def __init__(self, config: dict):
-        ark_config = config.get("ark", {})
-        self.api_key = ark_config.get("api_key", "")
-        self.base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
-        self.model = ark_config.get("image_model", "doubao-seedream-2.0-t2i-250529")
-        self.image_size = ark_config.get("image_size", "1472*1104")
-        ds_config = config.get("dashscope", {})
-        self.media_dir = Path(ark_config.get("media_dir") or ds_config.get("media_dir", "media"))
+    def __init__(self, config: ArkConfig):
+        self.api_key = config.api_key
+        self.base_url = config.base_url.rstrip("/")
+        self.model = config.image_model
+        self.image_size = config.image_size
+        self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
     @property

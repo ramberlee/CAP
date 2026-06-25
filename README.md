@@ -41,7 +41,6 @@ CAP/
 │   ├── vgen.py                  # AI 视频生成（DashScope / Agnes / Remotion）
 │   ├── remotion_client.py       # Remotion 视频渲染客户端
 │   ├── video_planner.py         # 视频构图规划（LLM 生成 Remotion 场景计划）
-│   ├── agnes_client.py          # Agnes AI API 统一客户端
 │   ├── tts.py                   # TTS 语音合成（MiMo TTS）
 │   ├── publisher.py             # 发布调度器
 │   └── platforms/
@@ -313,7 +312,6 @@ topic_id: 102
 | `modules.vgen` | AI 视频生成（DashScope / Agnes / Remotion 后端，支持音频同步） |
 | `modules.remotion_client` | Remotion 视频渲染客户端（npx/ffmpeg 管理、渲染、音频合并） |
 | `modules.video_planner` | 视频构图规划（LLM 生成 Remotion 场景计划） |
-| `modules.agnes_client` | Agnes AI API 统一客户端 |
 | `modules.tts` | TTS 语音合成（MiMo TTS，口播脚本转音频） |
 | `modules.content_store` | 文件化内容存储（Markdown + YAML frontmatter） |
 | `modules.config` | 配置加载 |

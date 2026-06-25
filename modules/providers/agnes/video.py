@@ -10,7 +10,9 @@ from pathlib import Path
 import requests
 
 from .. import VideoProvider
-from .._subtitle_utils import SubtitleConfig, download_video, finalize_video
+from .._subtitle_builder import SubtitleConfig, finalize_video
+from .._ffmpeg_utils import download_video
+from ...config_model import AgnesConfig, GenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +25,14 @@ DEFAULT_VIDEO_MODEL = "agnes-video-v2.0"
 class AgnesVideoProvider(VideoProvider):
     """Video generation via Agnes AI API."""
 
-    def __init__(self, config: dict):
-        agnes_config = config.get("agnes", {})
-        self.api_key = agnes_config.get("api_key", "")
-        self.model = agnes_config.get("video_model", DEFAULT_VIDEO_MODEL)
-        self.size = agnes_config.get("video_size", "1152*768")
-        self.duration = agnes_config.get("video_duration", 15)
-        self.media_dir = Path(agnes_config.get("media_dir", "media"))
+    def __init__(self, config: AgnesConfig, generation: GenerationConfig | None = None):
+        self.api_key = config.api_key
+        self.model = config.video_model
+        self.size = f"{config.video_width}*{config.video_height}"
+        self.duration = config.video_num_frames // config.video_frame_rate
+        self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
-        self.sub_config = SubtitleConfig.from_config(config)
+        self.sub_config = SubtitleConfig.from_config(generation) if generation else SubtitleConfig()
         self.poll_interval = 5
         self.max_poll_time = 600
 

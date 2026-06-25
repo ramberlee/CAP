@@ -11,6 +11,7 @@ from pathlib import Path
 import requests
 
 from .. import SpeechProvider
+from ...config_model import ArkConfig
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +21,14 @@ TTS_RESOURCE_ID = "seed-tts-2.0"
 class ArkSpeechProvider(SpeechProvider):
     """Speech synthesis via Volcano Ark TTS (HTTP chunked JSON)."""
 
-    def __init__(self, config: dict):
-        ark_config = config.get("ark", {})
-        self.api_key = ark_config.get("api_key", "")
-        self.base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
+    def __init__(self, config: ArkConfig):
+        self.api_key = config.api_key
+        self.base_url = config.base_url.rstrip("/")
         self.tts_url = f"{self.base_url}/plan/tts/unidirectional"
-        self.model = ark_config.get("tts_model", "doubao-seed-tts-2.0")
-        self.voice = ark_config.get("tts_voice", "zh_female_shuangkuaisisi_moon_bigtts")
+        self.model = config.tts_model
+        self.voice = config.tts_voice
 
-        ds_config = config.get("dashscope", {})
-        self.media_dir = Path(ark_config.get("media_dir") or ds_config.get("media_dir", "media"))
+        self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
     @property

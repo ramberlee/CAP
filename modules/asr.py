@@ -28,6 +28,8 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+from modules.config_model import ArkConfig
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_SAMPLE_RATE = 16000
@@ -684,17 +686,14 @@ class ASRTranscriber:
         utterances = asr.transcribe_with_timestamps("audio.wav")
     """
 
-    def __init__(self, config: dict):
-        ark_config = config.get("ark", {})
-        self.api_key = ark_config.get("api_key", "")
-        self.base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
-        self.resource_id = ark_config.get(
-            "asr_resource_id", "volc.seedasr.sauc.duration"
-        )
-        self.mode = ark_config.get("asr_mode", "nostream")
-        self.segment_duration = ark_config.get("asr_segment_duration", 200)
-        self.sample_rate = ark_config.get("asr_sample_rate", 16000)
-        self.enabled = ark_config.get("asr_enabled", False)
+    def __init__(self, config: ArkConfig):
+        self.api_key = config.api_key
+        self.base_url = config.base_url.rstrip("/")
+        self.resource_id = config.asr_resource_id or "volc.seedasr.sauc.duration"
+        self.mode = config.asr_mode
+        self.segment_duration = config.asr_segment_duration
+        self.sample_rate = config.asr_sample_rate
+        self.enabled = config.asr_enabled
 
         ws_base_url = self.base_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
         if self.mode == "async":

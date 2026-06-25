@@ -3,15 +3,16 @@
 import logging
 import requests
 from modules.database import Database
+from modules.config_model import AppConfig
 
 logger = logging.getLogger(__name__)
 
 
 class TopicMonitor:
-    def __init__(self, db: Database, config: dict):
+    def __init__(self, db: Database, config: AppConfig):
         self.db = db
-        self.config = config.get("monitor", {})
-        self.sources_config = self.config.get("sources", {})
+        self.config = config.monitor
+        self.sources_config = config.monitor.sources
 
     # ---- 道: Social hotspots ----
 
@@ -24,7 +25,7 @@ class TopicMonitor:
             resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
             data = resp.json()
             topics = []
-            for item in data.get("data", [])[: self.config.get("max_topics", 10)]:
+            for item in data.get("data", [])[: self.config.max_topics]:
                 title = item.get("Title", "").strip()
                 if title:
                     topics.append({
@@ -52,7 +53,7 @@ class TopicMonitor:
         try:
             feed = feedparser.parse(url)
             topics = []
-            max_topics = self.config.get("max_topics", 10)
+            max_topics = self.config.max_topics
 
             for entry in feed.entries:
                 if len(topics) >= max_topics:

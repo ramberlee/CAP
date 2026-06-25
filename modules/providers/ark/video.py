@@ -10,7 +10,9 @@ from pathlib import Path
 import requests
 
 from .. import VideoProvider
-from .._subtitle_utils import SubtitleConfig, download_video, finalize_video
+from .._subtitle_builder import SubtitleConfig, finalize_video
+from .._ffmpeg_utils import download_video
+from ...config_model import ArkConfig, GenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -18,21 +20,19 @@ logger = logging.getLogger(__name__)
 class ArkVideoProvider(VideoProvider):
     """Video generation via Volcano Ark (Volcengine video API)."""
 
-    def __init__(self, config: dict):
-        ark_config = config.get("ark", {})
-        self.api_key = ark_config.get("api_key", "")
-        self.base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
-        self.model = ark_config.get("video_model", "doubao-seedance-1.0-pro-250528")
-        self.video_size = ark_config.get("video_size", "1280*720")
-        self.duration = ark_config.get("video_duration", 15)
+    def __init__(self, config: ArkConfig, generation: GenerationConfig | None = None):
+        self.api_key = config.api_key
+        self.base_url = config.base_url.rstrip("/")
+        self.model = config.video_model
+        self.video_size = config.video_size
+        self.duration = config.video_duration
         self.video_generation_url = f"{self.base_url}/video/generations"
         self.video_query_url = f"{self.base_url}/video/query"
 
-        ds_config = config.get("dashscope", {})
-        self.media_dir = Path(ark_config.get("media_dir") or ds_config.get("media_dir", "media"))
+        self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
-        self.sub_config = SubtitleConfig.from_config(config)
+        self.sub_config = SubtitleConfig.from_config(generation) if generation else SubtitleConfig()
         self.poll_interval = 5
         self.max_poll_time = 600
 

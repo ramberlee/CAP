@@ -11,6 +11,7 @@ import dashscope
 from dashscope import ImageSynthesis, MultiModalConversation
 
 from .. import ImageProvider
+from ...config_model import DashScopeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +27,11 @@ DEFAULT_NEGATIVE_PROMPT = "低分辨率，低画质，肢体畸形，手指畸�
 class DashScopeImageProvider(ImageProvider):
     """Image generation via DashScope (Alibaba Cloud)."""
 
-    def __init__(self, config: dict):
-        ds_config = config.get("dashscope", {})
-        self.api_key = ds_config.get("api_key", "")
-        self.model = ds_config.get("model", "qwen-image")
-        self.size = ds_config.get("size", "1472*1104")
-        self.media_dir = Path(ds_config.get("media_dir", "media"))
+    def __init__(self, config: "DashScopeConfig"):
+        self.api_key = config.api_key
+        self.model = config.model
+        self.size = config.size
+        self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
         dashscope.api_key = self.api_key
 

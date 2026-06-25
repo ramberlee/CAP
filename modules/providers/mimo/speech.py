@@ -10,6 +10,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from .. import SpeechProvider
+from ...config_model import MiMoConfig
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +22,13 @@ DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1"
 class MiMoSpeechProvider(SpeechProvider):
     """Speech synthesis via MiMo TTS (OpenAI-compatible chat completions with audio param)."""
 
-    def __init__(self, config: dict):
-        mimo_config = config.get("mimo", {})
-        api_key = mimo_config.get("api_key", "")
-        base_url = mimo_config.get("tts_base_url", mimo_config.get("base_url", DEFAULT_BASE_URL))
-        self.model = mimo_config.get("tts_model", DEFAULT_MODEL)
-        self.voice = mimo_config.get("tts_voice", DEFAULT_VOICE)
+    def __init__(self, config: MiMoConfig):
+        api_key = config.api_key
+        base_url = config.base_url
+        self.model = config.tts_model
+        self.voice = config.tts_voice
 
-        ds_config = config.get("dashscope", {})
-        self.media_dir = Path(ds_config.get("media_dir", "media"))
+        self.media_dir = Path("media")
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
         self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None

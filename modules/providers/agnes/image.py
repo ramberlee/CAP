@@ -9,6 +9,7 @@ from pathlib import Path
 import requests
 
 from .. import ImageProvider
+from ...config_model import AgnesConfig
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +21,10 @@ DEFAULT_IMAGE_MODEL = "agnes-image-2.1-flash"
 class AgnesImageProvider(ImageProvider):
     """Image generation via Agnes AI API."""
 
-    def __init__(self, config: dict):
-        agnes_config = config.get("agnes", {})
-        self.api_key = agnes_config.get("api_key", "")
-        self.model = agnes_config.get("image_model", DEFAULT_IMAGE_MODEL)
-        self.media_dir = Path(agnes_config.get("media_dir", "media"))
+    def __init__(self, config: AgnesConfig):
+        self.api_key = config.api_key
+        self.model = config.image_model
+        self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
     @property

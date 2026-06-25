@@ -1,4 +1,13 @@
-"""AI content generation module using MiMo API (OpenAI compatible)."""
+"""AI content generation module using MiMo / Ark API (OpenAI compatible).
+
+Dependencies are injected via constructor. Use ContentGenerator.from_config()
+for the default production wiring (called from main.py).
+
+The former imager.py, vgen.py, and tts.py facades have been absorbed into
+this module as private implementation — provider dispatch is handled by
+_create_image_provider, _create_video_provider, and _create_speech_provider.
+Audio utility functions live in modules._audio_utils.
+"""
 
 import json
 import logging
@@ -9,9 +18,30 @@ from typing import Optional
 from openai import OpenAI
 from modules.database import Database
 from modules.content_store import ContentStore
-from modules.imager import ImageGenerator
-from modules.vgen import VideoGenerator
-from modules.tts import TTSSynthesizer
+from modules.config_model import AppConfig
+from modules._audio_utils import (
+    clean_script,
+    concat_wav_files,
+    get_audio_duration,
+    split_audio,
+    trim_audio,
+)
+from modules.providers import ImageProvider, VideoProvider, SpeechProvider
+from modules.providers.dashscope.image import DashScopeImageProvider
+from modules.providers.agnes.image import AgnesImageProvider
+from modules.providers.ark.image import ArkImageProvider
+from modules.providers.dashscope.video import DashScopeVideoProvider
+from modules.providers.agnes.video import AgnesVideoProvider
+from modules.providers.ark.video import ArkVideoProvider
+from modules.providers.remotion.video import RemotionVideoProvider
+from modules.providers.ark.speech import ArkSpeechProvider
+from modules.providers.mimo.speech import MiMoSpeechProvider
+from modules.providers._subtitle_builder import SubtitleConfig, burn_subtitles
+from modules.providers._ffmpeg_utils import (
+    concat_videos as _concat_videos,
+    merge_audio as _merge_audio,
+)
+from modules.video_planner import AudioPlanner, VideoPlanner
 import requests
 
 logger = logging.getLogger(__name__)
@@ -38,51 +68,160 @@ CATEGORY_SYSTEM_PROMPTS = {
 }
 
 
-def get_enabled_platforms(config: dict) -> list[str]:
+def get_enabled_platforms(config: AppConfig) -> list[str]:
     """Return the list of platforms that have enabled: true in config.platforms."""
-    platforms_config = config.get("platforms", {})
     enabled = []
     for name in PLATFORMS:
-        if platforms_config.get(name, {}).get("enabled", False):
+        plat = getattr(config.platforms, name, None)
+        if plat and plat.enabled:
             enabled.append(name)
     return enabled
 
 
+# ── Provider factory helpers (lifted from the former imager/vgen/tts facades) ──
+
+def _create_image_provider(config: AppConfig) -> ImageProvider:
+    """Select image provider by config key: dashscope (default), agnes, ark."""
+    provider_name = config.generation.image_provider
+    if provider_name == "agnes":
+        return AgnesImageProvider(config.agnes)
+    elif provider_name == "ark":
+        return ArkImageProvider(config.ark)
+    return DashScopeImageProvider(config.dashscope)
+
+
+def _create_video_provider(config: AppConfig) -> VideoProvider:
+    """Select video provider by config key: dashscope (default), agnes, ark, remotion."""
+    provider_name = config.generation.video_provider
+    if provider_name == "agnes":
+        return AgnesVideoProvider(config.agnes, generation=config.generation)
+    elif provider_name == "ark":
+        return ArkVideoProvider(config.ark, generation=config.generation)
+    elif provider_name == "remotion":
+        return RemotionVideoProvider(config)
+    return DashScopeVideoProvider(config.dashscope, generation=config.generation)
+
+
+def _create_speech_provider(config: AppConfig) -> SpeechProvider:
+    """Select speech provider by config key: mimo (default), ark."""
+    provider_name = config.generation.text_provider
+    if provider_name == "ark":
+        return ArkSpeechProvider(config.ark)
+    return MiMoSpeechProvider(config.mimo)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+
 class ContentGenerator:
-    def __init__(self, db: Database, config: dict):
+    """Generate platform content for hot topics.
+
+    Dependencies are injected via constructor. Use `from_config()` to wire up
+    from config.yaml — that's the only place provider-selection logic lives.
+    """
+
+    def __init__(
+        self,
+        db: Database,
+        config: AppConfig,
+        *,
+        # Injected dependencies — testable via fakes / mocks
+        client: OpenAI | None = None,
+        image_provider: ImageProvider | None = None,
+        video_provider: VideoProvider | None = None,
+        speech_provider: SpeechProvider | None = None,
+        store: ContentStore | None = None,
+        # Remotion-specific planners (optional, created by from_config)
+        audio_planner: AudioPlanner | None = None,
+        video_planner: VideoPlanner | None = None,
+    ):
         self.db = db
         self.config = config
-        self.gen_config = config.get("generation", {})
-        self.text_provider = self.gen_config.get("text_provider", "mimo")
+        self.gen_config = config.generation
 
-        if self.text_provider == "ark":
-            ark_config = config.get("ark", {})
-            api_key = ark_config.get("api_key", "")
-            base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3")
-            self.model = ark_config.get("model", "deepseek-r1-250528")
-        else:
-            mimo_config = config.get("mimo", {})
-            api_key = mimo_config.get("api_key", "")
-            base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
-            self.model = mimo_config.get("model", "mimo-v2.5-pro")
-
-        self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
-        self.auto_image = self.gen_config.get("auto_image", False)
-        self.imager = ImageGenerator(config) if self.auto_image else None
-        self.auto_video = self.gen_config.get("auto_video", False)
-        self.vgen = VideoGenerator(config) if self.auto_video else None
-        self.tts = TTSSynthesizer(config) if self.auto_video else None
-        self.ds_api_key = config.get("dashscope", {}).get("api_key", "")
-        self.store = ContentStore(
-            output_dir=config.get("output_dir", "output"),
-            media_dir=config.get("dashscope", {}).get("media_dir", "media"),
+        # ── Injected dependencies ──
+        self.client = client
+        self.image_provider = image_provider
+        self.video_provider = video_provider
+        self.speech_provider = speech_provider
+        self.store = store or ContentStore(
+            output_dir=config.output_dir,
+            media_dir=config.dashscope.media_dir,
         )
+        self._audio_planner = audio_planner
+        self._video_planner = video_planner
+
+        # ── Config-derived values (typed access) ──
+        self.text_provider = config.generation.text_provider
+        self.auto_image = config.generation.auto_image
+        self.auto_video = config.generation.auto_video
+
+        # Video provider metadata (used by _process_videos)
+        self._video_provider_name = config.generation.video_provider
+        self._video_model = config.dashscope.video_model
+        self._video_size = config.dashscope.video_size
+        self._video_max_duration = config.dashscope.video_duration
+        self._video_subtitles = config.generation.video_subtitles
+        self._sub_config = SubtitleConfig.from_config(config)
+
+        # DashScope API key for OSS upload
+        self.ds_api_key = config.dashscope.api_key
+
         self._templates = {}
+
+    @classmethod
+    def from_config(cls, db: Database, config: AppConfig) -> "ContentGenerator":
+        """Create a fully-wired ContentGenerator from a typed AppConfig.
+
+        This is the production entry-point (used by main.py). It reads the
+        config, selects providers, and injects everything.
+        """
+        text_provider = config.generation.text_provider
+
+        # ── LLM client ──
+        if text_provider == "ark":
+            api_key = config.ark.api_key
+            base_url = config.ark.base_url
+        else:
+            api_key = config.mimo.api_key
+            base_url = config.mimo.base_url
+
+        client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
+
+        # ── Providers ──
+        image_provider = _create_image_provider(config) if config.generation.auto_image else None
+        video_provider = _create_video_provider(config) if config.generation.auto_video else None
+        speech_provider = _create_speech_provider(config) if config.generation.auto_video else None
+
+        store = ContentStore(
+            output_dir=config.output_dir,
+            media_dir=config.dashscope.media_dir,
+        )
+
+        # ── Remotion-specific planners ──
+        audio_planner = None
+        video_planner = None
+        if config.generation.video_provider == "remotion" and config.generation.auto_video:
+            audio_planner = AudioPlanner(config)
+            video_planner = VideoPlanner(config)
+
+        return cls(
+            db, config,
+            client=client,
+            image_provider=image_provider,
+            video_provider=video_provider,
+            speech_provider=speech_provider,
+            store=store,
+            audio_planner=audio_planner,
+            video_planner=video_planner,
+        )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Template loading
+    # ──────────────────────────────────────────────────────────────────────────
 
     def _load_template(self, platform: str, category: str = "dao") -> str:
         cache_key = f"{platform}_{category}"
         if cache_key not in self._templates:
-            # Try category-specific template first, fall back to generic
             category_path = Path(f"templates/{platform}_{category}.md")
             generic_path = Path(f"templates/{platform}.md")
 
@@ -94,26 +233,25 @@ class ContentGenerator:
                 raise FileNotFoundError(f"Template not found: {category_path} or {generic_path}")
         return self._templates[cache_key]
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Tag utilities
+    # ──────────────────────────────────────────────────────────────────────────
+
     def _ensure_tags(self, result: dict, category: str) -> None:
         """Ensure result has valid tags. Auto-generate from title if empty."""
         tags = result.get("tags", [])
         if tags:
-            # Limit to 5 max (Douyin constraint, safe for all platforms)
             result["tags"] = tags[:5]
             return
 
         title = result.get("title", "")
-        # Generate basic tags from title keywords
         fallback_tags = ["#AI"]
         if category == "dao":
             fallback_tags.append("#AI时代")
         else:
             fallback_tags.append("#AI技术")
 
-        # Extract potential keywords from title (simple split by common delimiters)
-        import re
-        # Remove punctuation and split into chunks
-        chunks = re.split(r'[，。！？、：；“”‘’（）\s]+', title)
+        chunks = re.split(r"[，。！？、：；“”‘’（）\s]+", title)
         stopwords = {"的", "了", "是", "在", "和", "有", "不", "这", "那", "人", "我", "你", "他", "她", "它", "们", "被", "把", "将", "从", "到", "又", "就", "也", "都", "而", "且", "但", "或", "如果"}
         for chunk in chunks:
             chunk = chunk.strip()
@@ -122,12 +260,15 @@ class ContentGenerator:
                 if tag not in fallback_tags and len(fallback_tags) < 5:
                     fallback_tags.append(tag)
 
-        # Ensure at least 3 tags
         while len(fallback_tags) < 3:
             fallback_tags.append(f"#热点{len(fallback_tags)}")
 
         result["tags"] = fallback_tags[:5]
         logger.info(f"Auto-generated tags: {result['tags']}")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Content validation & repair
+    # ──────────────────────────────────────────────────────────────────────────
 
     def _validate_and_repair(self, result: dict, platform: str, category: str) -> dict:
         """Generic platform content validation and repair dispatch."""
@@ -137,29 +278,27 @@ class ContentGenerator:
         if not validator:
             return result
 
-        # Douyin validator is non-blocking (warnings only), no repair needed
         if platform == "douyin":
             validator(result, category=category)
             return result
 
-        # LLM-based validation with repair loop
-        platform_cfg = self.config.get("platforms", {}).get(platform, {})
-        if not platform_cfg.get("validate_content", False):
+        platform_cfg = getattr(self.config.platforms, platform, None)
+        if not platform_cfg or not platform_cfg.validate_content:
             return result
 
         repairer = get_repairer(platform)
-        max_repair = platform_cfg.get("max_repair", 1)
+        max_repair = platform_cfg.max_repair
 
         for attempt in range(max_repair + 1):
-            issues = validator(result, category=category, client=self.client, model=self.model)
+            issues = validator(result, category=category, client=self.client, model=self.gen_config.model)
             if not issues:
                 break
             if attempt < max_repair and repairer:
                 logger.info(f"[{platform}质量校验] 第 {attempt+1} 次修复...")
                 repaired = repairer(
                     result, issues, category=category,
-                    client=self.client, model=self.model,
-                    max_tokens=self.gen_config.get("max_tokens", 4096),
+                    client=self.client, model=self.gen_config.model,
+                    max_tokens=self.gen_config.max_tokens,
                 )
                 if repaired:
                     result = repaired
@@ -171,6 +310,10 @@ class ContentGenerator:
 
         return result
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # LLM content generation
+    # ──────────────────────────────────────────────────────────────────────────
+
     def _generate_for_platform(self, topic: str, platform: str, category: str = "dao") -> Optional[dict]:
         """Generate content for a specific platform."""
         template = self._load_template(platform, category)
@@ -181,9 +324,9 @@ class ContentGenerator:
 
         try:
             response = self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=self.gen_config.get("max_tokens", 4096),
-                temperature=self.gen_config.get("temperature", 0.7),
+                model=self.gen_config.model,
+                max_tokens=self.gen_config.max_tokens,
+                temperature=self.gen_config.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
@@ -192,7 +335,6 @@ class ContentGenerator:
 
             text = response.choices[0].message.content
 
-            # Extract JSON from response
             json_start = text.find("{")
             json_end = text.rfind("}") + 1
             if json_start == -1 or json_end == 0:
@@ -202,11 +344,9 @@ class ContentGenerator:
             result = json.loads(text[json_start:json_end])
             logger.info(f"Generated {platform} content: {result.get('title', 'N/A')[:30]}")
 
-            # Ensure tags exist (auto-generate if empty)
             if not result.get("tags"):
                 self._ensure_tags(result, category)
 
-            # Platform-specific validation & repair (delegated to platform modules)
             result = self._validate_and_repair(result, platform, category)
 
             return result
@@ -218,29 +358,23 @@ class ContentGenerator:
             logger.error(f"Generation failed for {platform}: {e}")
             return None
 
-    def _upload_to_oss(self, file_path: str, model_name: str) -> str | None:
-        """Upload a local file to DashScope OSS and return oss:// URL.
+    # ──────────────────────────────────────────────────────────────────────────
+    # OSS upload (DashScope)
+    # ──────────────────────────────────────────────────────────────────────────
 
-        Uses the temporary file upload API:
-        1. GET /api/v1/uploads?action=getPolicy&model=xxx
-        2. POST file to upload_host with policy data
-        3. Return oss:// URL
-        """
+    def _upload_to_oss(self, file_path: str, model_name: str) -> str | None:
+        """Upload a local file to DashScope OSS and return oss:// URL."""
         if not self.ds_api_key:
             logger.warning("DashScope API key not configured, skipping upload")
             return None
 
         try:
-            # Step 1: Get upload policy
             policy_url = "https://dashscope.aliyuncs.com/api/v1/uploads"
             headers = {
                 "Authorization": f"Bearer {self.ds_api_key}",
                 "Content-Type": "application/json",
             }
-            params = {
-                "action": "getPolicy",
-                "model": model_name,
-            }
+            params = {"action": "getPolicy", "model": model_name}
             resp = requests.get(policy_url, headers=headers, params=params, timeout=10)
             if resp.status_code != 200:
                 logger.error(f"Get upload policy failed: {resp.text}")
@@ -248,7 +382,6 @@ class ContentGenerator:
 
             policy_data = resp.json().get("data", {})
 
-            # Step 2: Upload file to OSS
             file_name = Path(file_path).name
             key = f"{policy_data['upload_dir']}/{file_name}"
 
@@ -277,13 +410,16 @@ class ContentGenerator:
             logger.error(f"OSS upload failed: {e}")
             return None
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Image processing
+    # ──────────────────────────────────────────────────────────────────────────
+
     def _process_images(self, body: str, content_id: int, platform: str) -> tuple[str, list[str]]:
         """Replace [IMAGE:description] placeholders with generated images.
 
         Returns (processed_body, list_of_local_image_paths).
         """
-        if not self.imager:
-            # No imager, just strip placeholders
+        if not self.image_provider:
             placeholder_count = len(list(IMAGE_PLACEHOLDER_RE.finditer(body)))
             if placeholder_count > 0:
                 logger.info(f"auto_image 未启用，已移除 {placeholder_count} 个 [IMAGE:...] 占位符")
@@ -294,7 +430,6 @@ class ContentGenerator:
             logger.info("正文中无 [IMAGE:...] 占位符，跳过配图")
             return body, []
 
-        # Prepare output media dir for this platform
         output_media = Path("output") / platform / "media"
         output_media.mkdir(parents=True, exist_ok=True)
 
@@ -306,20 +441,17 @@ class ContentGenerator:
             filename = f"content_{content_id}_{i+1}.png"
             logger.info(f"Generating image {i+1}/{len(placeholders)}: {desc[:50]}...")
 
-            image_path = self.imager.generate(desc, filename)
+            image_path = self.image_provider.generate(desc, filename)
             if image_path:
-                # Copy to output dir
                 src = Path(image_path)
                 dst = output_media / src.name
                 shutil.copy2(src, dst)
 
-                # Replace placeholder with markdown image
                 rel_path = f"media/{src.name}"
                 processed = processed.replace(match.group(0), f"\n\n![配图]({rel_path})\n", 1)
                 media_urls.append(str(dst))
                 logger.info(f"图片生成成功 [{i+1}/{len(placeholders)}]: {dst}")
             else:
-                # Remove placeholder if generation failed
                 processed = processed.replace(match.group(0), "", 1)
                 logger.warning(f"图片生成失败 [{i+1}/{len(placeholders)}]: {desc[:50]}...，已移除占位符")
 
@@ -329,19 +461,12 @@ class ContentGenerator:
         logger.info(f"配图处理完成: 成功 {success}/{total}，失败 {failed}/{total}")
         return processed, media_urls
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Voice prompt generation
+    # ──────────────────────────────────────────────────────────────────────────
+
     def _generate_voice_prompt(self, script_text: str, category: str = "dao") -> str | None:
-        """Generate a TTS voice prompt dynamically based on script content.
-
-        Uses LLM to analyze the script's tone, emotion, and style, then generates
-        an appropriate voice instruction for the TTS engine.
-
-        Args:
-            script_text: The cleaned script text.
-            category: Content category ('dao' or 'shu').
-
-        Returns:
-            Voice prompt string, or None on failure.
-        """
+        """Generate a TTS voice prompt dynamically based on script content."""
         system_prompt = (
             "你是一个语音导演。根据下面的口播文案，生成一句简短的 TTS 语音指令（20字以内），"
             "告诉语音合成系统应该用什么语气、节奏、情绪来朗读。\n\n"
@@ -354,7 +479,7 @@ class ContentGenerator:
 
         try:
             response = self.client.chat.completions.create(
-                model=self.model,
+                model=self.gen_config.model,
                 max_tokens=100,
                 temperature=0.7,
                 messages=[
@@ -363,8 +488,7 @@ class ContentGenerator:
                 ],
             )
             prompt = response.choices[0].message.content.strip()
-            # Clean up: remove quotes, markdown, etc.
-            prompt = prompt.strip('"\'`').strip()
+            prompt = prompt.strip("'\"`").strip()
             if prompt:
                 logger.info(f"Generated voice prompt: {prompt}")
                 return prompt
@@ -372,6 +496,45 @@ class ContentGenerator:
         except Exception as e:
             logger.warning(f"Voice prompt generation failed: {e}")
             return None
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # TTS synthesis helper (wraps speech_provider.synthesize + audio utils)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _synthesize_speech(
+        self,
+        script: str,
+        filename: str,
+        max_duration: float | None = 28,
+        voice_prompt: str | None = None,
+    ) -> tuple[str, float, float] | None:
+        """Generate audio from script text. Returns (file_path, duration, original_duration)."""
+        text = clean_script(script)
+        if not text or not self.speech_provider:
+            return None
+
+        if not filename.endswith(".wav"):
+            filename = filename.rsplit(".", 1)[0] + ".wav"
+
+        logger.info(f"Generating TTS: {text[:60]}...")
+        result = self.speech_provider.synthesize(text, filename, response_format="wav")
+        if not result:
+            return None
+        filepath = result
+
+        duration = get_audio_duration(filepath)
+        original_duration = duration
+        if max_duration and duration > max_duration:
+            logger.info(f"TTS audio {duration:.1f}s exceeds {max_duration}s limit, trimming...")
+            trim_audio(filepath, max_duration)
+            duration = get_audio_duration(filepath)
+
+        logger.info(f"TTS saved: {filepath} ({duration:.1f}s)")
+        return filepath, duration, original_duration
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # TTS from AudioPlanner segments (precise sync)
+    # ──────────────────────────────────────────────────────────────────────────
 
     def _generate_tts_from_audio_plan(
         self,
@@ -382,21 +545,16 @@ class ContentGenerator:
     ) -> tuple[str | None, float | None, list[dict]]:
         """Generate TTS audio from AudioPlanner segments for precise sync.
 
-        Each segment in the audio plan is synthesized individually, then all
-        WAVs are concatenated. Returns precise timing data keyed to segments.
-
-        Returns:
-            (concat_audio_path, total_duration, segment_timings)
-            where segment_timings is [{text, start, end}, ...]
+        Returns (concat_audio_path, total_duration, segment_timings).
         """
-        if not self.tts or not audio_plan.get("segments"):
+        if not self.speech_provider or not audio_plan.get("segments"):
             return None, None, []
 
         segments = audio_plan["segments"]
         seg_audio_paths = []
         seg_durations = []
         seg_texts = []
-        pauses = []  # pause_after per segment
+        pauses = []
 
         for i, seg in enumerate(segments):
             seg_text = seg.get("text", "").strip()
@@ -408,7 +566,7 @@ class ContentGenerator:
                 continue
 
             audio_filename = f"content_{content_id}_audio_seg_{i}.wav"
-            tts_result = self.tts.synthesize(
+            tts_result = self._synthesize_speech(
                 seg_text, audio_filename,
                 max_duration=30, voice_prompt=voice_prompt,
             )
@@ -424,17 +582,10 @@ class ContentGenerator:
         if not seg_audio_paths:
             return None, None, []
 
-        # Concatenate with the pauses specified by AudioPlanner
         concat_filename = f"content_{content_id}_tts.wav"
         concat_path = str(output_media / concat_filename)
-        from modules.tts import TTSSynthesizer
-        # Use per-segment pauses (AudioPlanner-specified) instead of fixed 0.15s
-        TTSSynthesizer.concat_wav_files(
-            seg_audio_paths, concat_path,
-            gap_seconds=0.0,  # pauses are baked into segment texts or handled below
-        )
+        concat_wav_files(seg_audio_paths, concat_path, gap_seconds=0.0)
 
-        # Build timing data with specified pauses
         segment_timings = []
         current_time = 0.0
         for i, (duration, text) in enumerate(zip(seg_durations, seg_texts)):
@@ -446,16 +597,24 @@ class ContentGenerator:
             else:
                 segment_timings.append({"text": text, "start": round(current_time, 2), "end": round(current_time, 2)})
 
-        total_duration = TTSSynthesizer.get_audio_duration(concat_path)
+        total_duration = get_audio_duration(concat_path)
         logger.info(f"Audio-plan TTS: {len(seg_audio_paths)} segments, {total_duration:.1f}s total")
         return concat_path, total_duration, segment_timings
 
-    def _generate_tts_per_scene(self, plan: dict, content_id: int, output_media: Path, max_total_duration: float = 60, voice_prompt: str | None = None) -> tuple[str | None, float | None, list[dict]]:
-        """[DEPRECATED] Legacy per-scene TTS from plan scenes.
+    # ──────────────────────────────────────────────────────────────────────────
+    # Legacy per-scene TTS (deprecated fallback)
+    # ──────────────────────────────────────────────────────────────────────────
 
-        Kept as fallback when AudioPlanner is unavailable.
-        """
-        if not self.tts or not plan.get("scenes"):
+    def _generate_tts_per_scene(
+        self,
+        plan: dict,
+        content_id: int,
+        output_media: Path,
+        max_total_duration: float = 60,
+        voice_prompt: str | None = None,
+    ) -> tuple[str | None, float | None, list[dict]]:
+        """[DEPRECATED] Legacy per-scene TTS from plan scenes."""
+        if not self.speech_provider or not plan.get("scenes"):
             return None, None, []
 
         scenes = plan["scenes"]
@@ -471,7 +630,10 @@ class ContentGenerator:
                 continue
 
             audio_filename = f"content_{content_id}_scene_{i}.wav"
-            tts_result = self.tts.synthesize(scene_text, audio_filename, max_duration=max_total_duration, voice_prompt=voice_prompt)
+            tts_result = self._synthesize_speech(
+                scene_text, audio_filename,
+                max_duration=max_total_duration, voice_prompt=voice_prompt,
+            )
             if tts_result:
                 audio_path, duration, _ = tts_result
                 scene_audio_paths.append(audio_path)
@@ -486,8 +648,7 @@ class ContentGenerator:
 
         concat_filename = f"content_{content_id}_tts.wav"
         concat_path = str(output_media / concat_filename)
-        from modules.tts import TTSSynthesizer
-        TTSSynthesizer.concat_wav_files(scene_audio_paths, concat_path, gap_seconds=0.15)
+        concat_wav_files(scene_audio_paths, concat_path, gap_seconds=0.15)
 
         scene_timings = []
         current_time = 0.0
@@ -501,14 +662,13 @@ class ContentGenerator:
             else:
                 scene_timings.append({"text": text, "start": round(current_time, 2), "end": round(current_time, 2)})
 
-        total_duration = TTSSynthesizer.get_audio_duration(concat_path)
+        total_duration = get_audio_duration(concat_path)
         logger.info(f"Per-scene TTS (legacy): {len(scene_audio_paths)} scenes, {total_duration:.1f}s total")
         return concat_path, total_duration, scene_timings
 
     def _extract_scene_text(self, scene: dict) -> str:
         """Extract speakable text from a composition plan scene."""
         scene_type = scene.get("type", "")
-
         if scene_type in ("title", "hook"):
             return scene.get("text", "")
         elif scene_type == "text_sequence":
@@ -523,21 +683,12 @@ class ContentGenerator:
             return scene.get("text", "").replace("\n", "。")
         return ""
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Video description generation (for text-to-video providers)
+    # ──────────────────────────────────────────────────────────────────────────
+
     def _generate_video_description(self, script_text: str, title: str, category: str = "dao") -> str | None:
-        """Generate a text-to-video prompt from an oral script using the video template.
-
-        Uses a dedicated video prompt template (douyin_video.md / douyin_video_dao.md / douyin_video_shu.md)
-        to create a cinematic description optimized for AI video generation models.
-
-        Args:
-            script_text: The oral script text (cleaned, no markers).
-            title: The content title.
-            category: Content category ('dao' or 'shu').
-
-        Returns:
-            Video description string, or None on failure.
-        """
-        # Load video-specific template
+        """Generate a text-to-video prompt from an oral script using the video template."""
         try:
             template = self._load_template("douyin_video", category)
         except FileNotFoundError:
@@ -553,7 +704,7 @@ class ContentGenerator:
         try:
             logger.info("Generating video description via LLM (text-to-video template)...")
             response = self.client.chat.completions.create(
-                model=self.model,
+                model=self.gen_config.model,
                 max_tokens=1024,
                 temperature=0.7,
                 messages=[
@@ -563,7 +714,6 @@ class ContentGenerator:
             )
             text = response.choices[0].message.content.strip()
 
-            # Extract JSON and parse video_prompt
             json_start = text.find("{")
             json_end = text.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
@@ -574,10 +724,8 @@ class ContentGenerator:
                         logger.info(f"Video description generated: {video_prompt[:60]}...")
                         return video_prompt
                 except json.JSONDecodeError:
-                    pass  # Fall through to regex extraction
+                    pass
 
-            # Fallback: extract video_prompt value directly via regex
-            # Handles truncated JSON where the string is never closed
             match = re.search(r'"video_prompt"\s*:\s*"((?:[^"\\]|\\.)*)', text)
             if match:
                 video_prompt = match.group(1).strip()
@@ -591,7 +739,18 @@ class ContentGenerator:
             logger.error(f"Video description generation failed: {e}")
             return None
 
-    def _process_videos(self, body: str, content_id: int, platform: str, tags: list[str] | None = None, category: str = "dao") -> tuple[str, list[str]]:
+    # ──────────────────────────────────────────────────────────────────────────
+    # Video processing (the big one)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _process_videos(
+        self,
+        body: str,
+        content_id: int,
+        platform: str,
+        tags: list[str] | None = None,
+        category: str = "dao",
+    ) -> tuple[str, list[str]]:
         """Generate videos for douyin content.
 
         Two paths based on video provider:
@@ -601,35 +760,33 @@ class ContentGenerator:
 
         Returns (processed_body, list_of_local_video_paths).
         """
-        if not self.vgen:
+        if not self.video_provider:
             return body, []
 
-        # Prepare output media dir for this platform
         output_media = Path("output") / platform / "media"
         output_media.mkdir(parents=True, exist_ok=True)
 
-        # Extract clean script text (strip markers and separators)
+        # Extract clean script text
         script_text = VIDEO_PLACEHOLDER_RE.sub("", body).strip()
         script_text = re.sub(r"【[^】]+】", "", script_text)
         script_text = re.sub(r"\n*---\n*", "，", script_text).strip()
         script_text = re.sub(r"[，。]{2,}", "，", script_text)
         subtitle_text = script_text
-        video_plan = None  # For remotion: pre-generated plan
+        video_plan = None
 
-        # Extract title from body
         topic_title = re.sub(r"【[^】]+】", "", body).strip()
         topic_title = topic_title.split("\n")[0].strip()[:50]
         if not topic_title:
             topic_title = "AI 资讯"
 
-        is_remotion = getattr(self.vgen, 'provider', 'dashscope') == 'remotion'
+        is_remotion = self._video_provider_name == "remotion"
 
         # ── Remotion flow: Audio plan first → TTS → Video plan ──
-        audio_plan = None    # AudioPlanner output
-        audio_segments = []  # raw segments from audio plan
-        if is_remotion and self.vgen and self.vgen.audio_planner:
+        audio_plan = None
+        audio_segments = []
+        if is_remotion and self._audio_planner:
             logger.info("Step 1/3: Generating audio narration plan (AudioPlanner)...")
-            audio_plan = self.vgen.audio_planner.plan(
+            audio_plan = self._audio_planner.plan(
                 script=script_text,
                 title=topic_title,
                 tags=tags,
@@ -638,8 +795,10 @@ class ContentGenerator:
                 narration = audio_plan.get("narration", "")
                 voice_direction = audio_plan.get("voice_direction", "")
                 audio_segments = audio_plan.get("segments", [])
-                logger.info(f"Audio plan: {len(audio_segments)} segments, "
-                           f"voice_direction={voice_direction[:40] if voice_direction else 'N/A'}")
+                logger.info(
+                    f"Audio plan: {len(audio_segments)} segments, "
+                    f"voice_direction={voice_direction[:40] if voice_direction else 'N/A'}"
+                )
                 if narration:
                     script_text = narration
                     subtitle_text = narration
@@ -650,11 +809,10 @@ class ContentGenerator:
         audio_oss_url = None
         src_audio = None
         audio_duration = None
-        scene_timings = []  # Per-scene timing for precise sync
-        use_audio_sync = self.tts is not None
+        scene_timings = []
+        use_audio_sync = self.speech_provider is not None
 
         if use_audio_sync:
-            # Voice prompt: use AudioPlanner direction for Remotion, LLM-generated otherwise
             if is_remotion and audio_plan:
                 voice_prompt = audio_plan.get("voice_direction")
             else:
@@ -664,7 +822,7 @@ class ContentGenerator:
                 # ── Remotion: per-segment TTS from AudioPlanner ──
                 logger.info("Step 2/3: Generating per-segment TTS from audio plan...")
                 concat_path, total_duration, scene_timings = self._generate_tts_from_audio_plan(
-                    audio_plan, content_id, output_media, voice_prompt=voice_prompt
+                    audio_plan, content_id, output_media, voice_prompt=voice_prompt,
                 )
                 if concat_path and total_duration:
                     audio_path = concat_path
@@ -683,16 +841,18 @@ class ContentGenerator:
 
                     # Step 3/3: Generate video plan with measured audio timings
                     logger.info("Step 3/3: Generating visual composition plan (VideoPlanner)...")
-                    video_plan = self.vgen.planner.plan(
+                    video_plan = self._video_planner.plan(
                         script=script_text,
                         title=topic_title,
                         tags=tags,
                         audio_timings=scene_timings,
-                    )
+                    ) if self._video_planner else None
                     if video_plan:
                         plan_dur = sum(s.get("duration", 0) for s in video_plan["scenes"])
-                        logger.info(f"Video plan with audio sync: {len(video_plan['scenes'])} scenes, "
-                                   f"plan={plan_dur:.1f}s, audio={audio_duration:.1f}s")
+                        logger.info(
+                            f"Video plan with audio sync: {len(video_plan['scenes'])} scenes, "
+                            f"plan={plan_dur:.1f}s, audio={audio_duration:.1f}s"
+                        )
                     else:
                         logger.warning("VideoPlanner failed after TTS, plan will be None")
 
@@ -700,7 +860,8 @@ class ContentGenerator:
                 # ── Legacy fallback: per-scene TTS from old plan ──
                 logger.info("Generating per-scene TTS for precise audio/video sync (legacy)...")
                 concat_path, total_duration, scene_timings = self._generate_tts_per_scene(
-                    video_plan, content_id, output_media, max_total_duration=60, voice_prompt=voice_prompt
+                    video_plan, content_id, output_media,
+                    max_total_duration=60, voice_prompt=voice_prompt,
                 )
                 if concat_path and total_duration:
                     audio_path = concat_path
@@ -722,13 +883,18 @@ class ContentGenerator:
                             video_plan["scenes"][i]["duration"] = round(timing["end"] - timing["start"], 2)
 
                     plan_dur = sum(s.get("duration", 0) for s in video_plan["scenes"])
-                    logger.info(f"Plan durations from TTS (legacy): {plan_dur:.1f}s (audio: {audio_duration:.1f}s, "
-                               f"gap from {len(scene_timings)} scene pauses)")
+                    logger.info(
+                        f"Plan durations from TTS (legacy): {plan_dur:.1f}s "
+                        f"(audio: {audio_duration:.1f}s)"
+                    )
             else:
-                # --- Text-to-video: full TTS (audio is source of truth) ---
+                # --- Text-to-video: full TTS ---
                 audio_filename = f"content_{content_id}_tts.wav"
                 logger.info("Generating TTS audio for script (no duration limit)...")
-                tts_result = self.tts.synthesize(script_text, audio_filename, max_duration=None, voice_prompt=voice_prompt)
+                tts_result = self._synthesize_speech(
+                    script_text, audio_filename,
+                    max_duration=None, voice_prompt=voice_prompt,
+                )
                 if tts_result:
                     audio_path, audio_duration, _ = tts_result
                     src_audio = Path(audio_path)
@@ -739,20 +905,15 @@ class ContentGenerator:
         media_urls = []
         processed = body
 
-        # Check for existing [VIDEO:...] placeholders (legacy support)
         placeholders = list(VIDEO_PLACEHOLDER_RE.finditer(body))
 
         if is_remotion:
-            # Remotion: no [VIDEO:...] needed, generate directly from plan
-            video_desc = script_text  # not used by Remotion, just for logging
+            video_desc = script_text
         elif placeholders:
-            # Legacy: body contains [VIDEO:...] placeholders
             video_desc = placeholders[0].group(1).strip()
         else:
-            # New flow: generate video description from script via video template
             video_desc = self._generate_video_description(script_text, topic_title, category)
             if not video_desc:
-                # Fallback: use raw script as description
                 video_desc = f"总时长15秒。{script_text[:200]}"
                 logger.warning("Video description generation failed, using fallback")
 
@@ -760,10 +921,10 @@ class ContentGenerator:
         logger.info(f"Generating video: {video_desc[:60]}...")
 
         if is_remotion:
-            # Remotion: single video from plan, audio already local
             audio_url_arg = str(src_audio) if src_audio else None
-            video_path = self.vgen.generate(
-                video_desc, filename,
+            video_path = self.video_provider.generate(
+                prompt=video_desc,
+                filename=filename,
                 audio_url=audio_url_arg,
                 subtitles=subtitle_text,
                 keywords=tags,
@@ -779,25 +940,25 @@ class ContentGenerator:
                 media_urls.append(str(dst))
         else:
             # Text-to-video: multi-segment when audio exceeds API limit
-            api_max = getattr(self.vgen, 'duration', 15) or 15
+            api_max = self._video_max_duration or 15
             needs_split = audio_duration and audio_duration > api_max + 1
 
             if needs_split and src_audio:
-                # Split audio into segments ≤ API max duration
                 seg_dir = output_media / f"segs_{content_id}"
-                segments = TTSSynthesizer.split_audio(
-                    str(src_audio), str(seg_dir), max_segment_duration=float(api_max)
+                segments = split_audio(
+                    str(src_audio), str(seg_dir),
+                    max_segment_duration=float(api_max),
                 )
                 logger.info(f"Audio split into {len(segments)} segments for multi-segment video")
 
-                # Generate video per segment
                 segment_videos = []
                 for i, seg in enumerate(segments):
-                    seg_oss = self._upload_to_oss(seg["path"], self.vgen.model)
+                    seg_oss = self._upload_to_oss(seg["path"], self._video_model)
                     seg_filename = f"content_{content_id}_seg{i}.mp4"
                     logger.info(f"Generating video segment {i+1}/{len(segments)} ({seg['duration']:.1f}s)...")
-                    seg_video = self.vgen.generate(
-                        video_desc, seg_filename,
+                    seg_video = self.video_provider.generate(
+                        prompt=video_desc,
+                        filename=seg_filename,
                         audio_url=seg_oss,
                         audio_duration=seg["duration"],
                     )
@@ -808,16 +969,14 @@ class ContentGenerator:
                         break
 
                 if segment_videos and len(segment_videos) == len(segments):
-                    # Concatenate video segments
                     concat_video = str(output_media / f"content_{content_id}_concat.mp4")
-                    concat_ok = self.vgen.concat_videos(segment_videos, concat_video)
+                    concat_ok = _concat_videos(segment_videos, concat_video)
 
                     if concat_ok:
-                        # Merge full TTS audio into concatenated video
-                        merged = self.vgen._merge_audio(concat_video, str(src_audio))
-                        # Burn subtitles using audio duration for timing
-                        final = self.vgen._burn_subtitles(
-                            merged, subtitle_text, tags, audio_duration,
+                        merged = _merge_audio(concat_video, str(src_audio))
+                        final = burn_subtitles(
+                            merged, subtitle_text, self._video_size,
+                            self._sub_config, tags, audio_duration,
                         )
                         if final:
                             src = Path(final)
@@ -830,17 +989,16 @@ class ContentGenerator:
                                 processed += f"\n\n[视频]({rel_path})\n"
                             media_urls.append(str(dst))
 
-                    # Clean up segment files
                     try:
                         shutil.rmtree(seg_dir, ignore_errors=True)
                     except Exception:
                         pass
             else:
-                # Single segment: upload full audio, generate one video
                 if src_audio and not audio_oss_url:
-                    audio_oss_url = self._upload_to_oss(str(src_audio), self.vgen.model)
-                video_path = self.vgen.generate(
-                    video_desc, filename,
+                    audio_oss_url = self._upload_to_oss(str(src_audio), self._video_model)
+                video_path = self.video_provider.generate(
+                    prompt=video_desc,
+                    filename=filename,
                     audio_url=audio_oss_url,
                     subtitles=subtitle_text,
                     keywords=tags,
@@ -859,7 +1017,17 @@ class ContentGenerator:
 
         return processed, media_urls
 
-    def generate_for_topic(self, topic_id: int, topic_title: str, category: str = "dao", platforms: list[str] | None = None) -> list[Path]:
+    # ──────────────────────────────────────────────────────────────────────────
+    # Public interface: generate_for_topic
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def generate_for_topic(
+        self,
+        topic_id: int,
+        topic_title: str,
+        category: str = "dao",
+        platforms: list[str] | None = None,
+    ) -> list[Path]:
         """Generate content for a topic across specified platforms. Returns file paths."""
         platforms = platforms or get_enabled_platforms(self.config)
         file_paths = []
@@ -874,19 +1042,18 @@ class ContentGenerator:
             tags = result.get("tags", [])
             description = result.get("description", "")
 
-            # Platform-specific content processing (delegated to platform modules)
             from modules.platforms import get_processor
             processor = get_processor(platform)
             if processor:
                 title, body = processor(title, body, tags)
 
-            # Process inline images
             content_id = topic_id * 100 + len(file_paths)
             body, media_urls = self._process_images(body, content_id, platform)
 
-            # Process inline videos (for douyin and other video-first platforms)
             if platform == "douyin":
-                body, video_urls = self._process_videos(body, content_id, platform, tags=tags, category=category)
+                body, video_urls = self._process_videos(
+                    body, content_id, platform, tags=tags, category=category,
+                )
                 media_urls.extend(video_urls)
 
             filepath = self.store.save_content(
@@ -900,11 +1067,14 @@ class ContentGenerator:
             )
             file_paths.append(filepath)
 
-        # Mark topic as processing
         if file_paths:
             self.db.update_topic_status(topic_id, "processing")
 
         return file_paths
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Public interface: run (called from CLI)
+    # ──────────────────────────────────────────────────────────────────────────
 
     def run(self, limit: int = 1, category: str | None = None) -> dict:
         """Generate content for all new topics. Returns summary.
@@ -914,10 +1084,8 @@ class ContentGenerator:
             category: If set, only generate for this category ('dao' or 'shu').
         """
         if category:
-            # 单类别模式：只处理指定类别
             topics = self.db.get_topics(status="new", category=category, limit=limit)
         else:
-            # 双类别模式：分别处理"道"和"术"，每类各limit篇
             dao_topics = self.db.get_topics(status="new", category="dao", limit=limit)
             shu_topics = self.db.get_topics(status="new", category="shu", limit=limit)
             topics = dao_topics + shu_topics
@@ -929,7 +1097,7 @@ class ContentGenerator:
         total_contents = 0
         for topic in topics:
             paths = self.generate_for_topic(
-                topic["id"], topic["title"], category=topic.get("category", "dao")
+                topic["id"], topic["title"], category=topic.get("category", "dao"),
             )
             total_contents += len(paths)
 

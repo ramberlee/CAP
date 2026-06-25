@@ -1,18 +1,20 @@
 """Remotion video generation adapter.
 
 Renders videos using the Remotion framework (React-based).
-Delegates to modules/remotion_client.py for CLI rendering, ffmpeg audio merging,
+Uses .client.RemotionClient for CLI rendering, ffmpeg audio merging,
 and image serving. Handles LLM-based composition planning internally.
 """
 
 import logging
 from pathlib import Path
 
-from modules.remotion_client import RemotionClient
+from .client import RemotionClient
 from modules.video_planner import AudioPlanner, VideoPlanner
 
 from .. import VideoProvider
-from .._subtitle_utils import SubtitleConfig, concat_videos, merge_audio
+from .._subtitle_builder import SubtitleConfig
+from .._ffmpeg_utils import concat_videos, merge_audio
+from ...config_model import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -24,19 +26,17 @@ class RemotionVideoProvider(VideoProvider):
     details — not exposed through the VideoProvider interface.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: AppConfig):
         self.config = config
         self.remotion_client = RemotionClient(config)
         self.audio_planner = AudioPlanner(config)
         self.planner = VideoPlanner(config)
-        self.sub_config = SubtitleConfig.from_config(config)
+        self.sub_config = SubtitleConfig.from_config(config.generation)
 
-        ds_config = config.get("dashscope", {})
-        self.media_dir = Path(ds_config.get("media_dir", "media"))
+        self.media_dir = Path(config.dashscope.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
-        gen_config = config.get("generation", {})
-        self.duration = gen_config.get("video_duration", 15)
+        self.duration = config.dashscope.video_duration or 15
 
     def generate(
         self,

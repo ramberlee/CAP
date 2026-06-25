@@ -20,6 +20,8 @@ import re as _re
 from typing import Optional
 from openai import OpenAI
 
+from modules.config_model import AppConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -108,20 +110,17 @@ AUDIO_PLANNER_USER_PROMPT_TEMPLATE = """根据以下参考素材，创作一段�
 class AudioPlanner:
     """Generates audio narration scripts from douyin source material using LLM."""
 
-    def __init__(self, config: dict):
-        gen_config = config.get("generation", {})
-        text_provider = gen_config.get("text_provider", "mimo")
+    def __init__(self, config: AppConfig):
+        text_provider = config.generation.text_provider
 
         if text_provider == "ark":
-            ark_config = config.get("ark", {})
-            api_key = ark_config.get("api_key", "")
-            base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3")
-            self.model = ark_config.get("planner_model") or ark_config.get("model", "deepseek-r1-250528")
+            api_key = config.ark.api_key
+            base_url = config.ark.base_url
+            self.model = config.ark.effective_planner_model
         else:
-            mimo_config = config.get("mimo", {})
-            api_key = mimo_config.get("api_key", "")
-            base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
-            self.model = mimo_config.get("planner_model", mimo_config.get("model", "mimo-v2.5-pro"))
+            api_key = config.mimo.api_key
+            base_url = config.mimo.base_url
+            self.model = config.mimo.effective_planner_model
 
         self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
 
@@ -476,20 +475,17 @@ class VideoPlanner:
       2. That custom prompt drives the actual plan generation.
     """
 
-    def __init__(self, config: dict):
-        gen_config = config.get("generation", {})
-        text_provider = gen_config.get("text_provider", "mimo")
+    def __init__(self, config: AppConfig):
+        text_provider = config.generation.text_provider
 
         if text_provider == "ark":
-            ark_config = config.get("ark", {})
-            api_key = ark_config.get("api_key", "")
-            base_url = ark_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3")
-            self.model = ark_config.get("planner_model") or ark_config.get("model", "deepseek-r1-250528")
+            api_key = config.ark.api_key
+            base_url = config.ark.base_url
+            self.model = config.ark.effective_planner_model
         else:
-            mimo_config = config.get("mimo", {})
-            api_key = mimo_config.get("api_key", "")
-            base_url = mimo_config.get("base_url", "https://api.xiaomimimo.com/v1")
-            self.model = mimo_config.get("planner_model", mimo_config.get("model", "mimo-v2.5-pro"))
+            api_key = config.mimo.api_key
+            base_url = config.mimo.base_url
+            self.model = config.mimo.effective_planner_model
 
         self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
 

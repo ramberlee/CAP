@@ -226,12 +226,12 @@ def _upload_thumb(token: str, image_path: Path) -> str | None:
 class WeChatPublisher:
     BASE_URL = "https://api.weixin.qq.com/cgi-bin"
 
-    def __init__(self, config: dict):
-        self.app_id = config.get("app_id", "")
-        self.app_secret = config.get("app_secret", "")
-        self.author = config.get("author", "")
-        self.mode = config.get("mode", "draft")
-        self.theme = config.get("theme", "claude")
+    def __init__(self, config: "WeChatPlatformConfig"):
+        self.app_id = config.app_id
+        self.app_secret = config.app_secret
+        self.author = config.author
+        self.mode = config.mode
+        self.theme = config.theme
         self._access_token = None
 
     def _get_access_token(self) -> str:

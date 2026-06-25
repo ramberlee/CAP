@@ -72,11 +72,11 @@ class DouyinPublisher:
     Supports batch publishing: opens browser once, publishes all videos, then closes.
     """
 
-    def __init__(self, config: dict):
-        self.cookie_file = config.get("cookie_file", "db/douyin_cookies.json")
-        self.headless = config.get("headless", False)
-        self.channel = config.get("channel", "chrome")
-        self.post_publish_wait = config.get("post_publish_wait", 30)
+    def __init__(self, config: "DouyinPlatformConfig"):
+        self.cookie_file = config.cookie_file
+        self.headless = config.headless
+        self.channel = config.channel
+        self.post_publish_wait = config.post_publish_wait
 
     def _save_cookies(self, context):
         cookies = context.cookies()

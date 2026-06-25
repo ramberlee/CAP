@@ -27,6 +27,8 @@ from typing import Optional
 
 import requests
 
+from modules.config_model import ImageSearchConfig
+
 logger = logging.getLogger(__name__)
 
 PEXELS_BASE = "https://api.pexels.com/v1"
@@ -46,13 +48,12 @@ class ImageResult:
 class ImageSearcher:
     """Multi-provider image search with auto-fallback."""
 
-    def __init__(self, config: dict):
-        is_config = config.get("image_search", {})
-        provider = is_config.get("provider", "placeholder")
-        self.pexels_key = is_config.get("pexels_api_key", "")
-        self.unsplash_key = is_config.get("unsplash_access_key", "")
-        self.download_dir = Path(is_config.get("download_dir", "data/images"))
-        self.orientation = is_config.get("orientation", "portrait")
+    def __init__(self, config: ImageSearchConfig):
+        provider = config.provider
+        self.pexels_key = config.pexels_api_key
+        self.unsplash_key = config.unsplash_access_key
+        self.download_dir = Path(config.download_dir)
+        self.orientation = config.orientation
         self.download_dir.mkdir(parents=True, exist_ok=True)
 
         # Resolve actual provider based on available keys
@@ -226,9 +227,9 @@ class ImageSearcher:
 _searcher: Optional[ImageSearcher] = None
 
 
-def get_searcher(config: dict) -> ImageSearcher:
+def get_searcher(config: "AppConfig") -> ImageSearcher:
     """Get or create the singleton ImageSearcher."""
     global _searcher
     if _searcher is None:
-        _searcher = ImageSearcher(config)
+        _searcher = ImageSearcher(config.image_search)
     return _searcher

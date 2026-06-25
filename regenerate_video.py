@@ -18,16 +18,64 @@ logger = logging.getLogger(__name__)
 VIDEO_PLACEHOLDER_RE = re.compile(r'\[视频\]\(.*?\)|\[VIDEO:.*?\]', re.DOTALL)
 
 from modules.config import load_config
+from modules.config_model import AppConfig
 from modules.video_planner import AudioPlanner, VideoPlanner
-from modules.tts import TTSSynthesizer
-from modules.vgen import VideoGenerator
+from modules._audio_utils import (
+    clean_script,
+    concat_wav_files,
+    get_audio_duration,
+    trim_audio,
+)
+from modules.providers.remotion.video import RemotionVideoProvider
+from modules.providers.mimo.speech import MiMoSpeechProvider
+from modules.providers.ark.speech import ArkSpeechProvider
+
+
+def _create_speech_provider(config: AppConfig):
+    """Select speech provider by config key: mimo (default), ark."""
+    provider_name = config.generation.text_provider
+    if provider_name == "ark":
+        return ArkSpeechProvider(config.ark)
+    return MiMoSpeechProvider(config.mimo)
+
+
+def _synthesize_speech(
+    speech_provider,
+    script: str,
+    filename: str,
+    max_duration: float | None = 28,
+    voice_prompt: str | None = None,
+) -> tuple[str, float, float] | None:
+    """Generate audio from script text. Returns (file_path, duration, original_duration)."""
+    text = clean_script(script)
+    if not text:
+        return None
+
+    if not filename.endswith(".wav"):
+        filename = filename.rsplit(".", 1)[0] + ".wav"
+
+    logger.info(f"Generating TTS: {text[:60]}...")
+    result = speech_provider.synthesize(text, filename, response_format="wav")
+    if not result:
+        return None
+    filepath = result
+
+    duration = get_audio_duration(filepath)
+    original_duration = duration
+    if max_duration and duration > max_duration:
+        logger.info(f"TTS audio {duration:.1f}s exceeds {max_duration}s limit, trimming...")
+        trim_audio(filepath, max_duration)
+        duration = get_audio_duration(filepath)
+
+    logger.info(f"TTS saved: {filepath} ({duration:.1f}s)")
+    return filepath, duration, original_duration
 
 
 def _generate_tts_from_audio_segments(
     segments: list[dict],
     content_id: str,
     output_media: Path,
-    tts: TTSSynthesizer,
+    speech_provider,
     voice_prompt: str,
 ) -> tuple[str | None, float | None, list[dict]]:
     """Generate per-segment TTS from AudioPlanner output. Returns (path, dur, timings)."""
@@ -47,7 +95,7 @@ def _generate_tts_from_audio_segments(
 
         audio_filename = f"content_{content_id}_seg_{i}.wav"
         logger.info(f"  TTS seg {i}: {seg_text[:40]}...")
-        result = tts.synthesize(seg_text, audio_filename, max_duration=30, voice_prompt=voice_prompt)
+        result = _synthesize_speech(speech_provider, seg_text, audio_filename, max_duration=30, voice_prompt=voice_prompt)
         if result:
             audio_path, duration, _ = result
             seg_audio_paths.append(audio_path)
@@ -62,7 +110,7 @@ def _generate_tts_from_audio_segments(
 
     concat_filename = f"content_{content_id}_tts.wav"
     concat_path = str(output_media / concat_filename)
-    TTSSynthesizer.concat_wav_files(seg_audio_paths, concat_path, gap_seconds=0.0)
+    concat_wav_files(seg_audio_paths, concat_path, gap_seconds=0.0)
 
     segment_timings = []
     current_time = 0.0
@@ -75,7 +123,7 @@ def _generate_tts_from_audio_segments(
         else:
             segment_timings.append({"text": text, "start": round(current_time, 2), "end": round(current_time, 2)})
 
-    total_duration = TTSSynthesizer.get_audio_duration(concat_path)
+    total_duration = get_audio_duration(concat_path)
     logger.info(f"  TTS done: {len(seg_audio_paths)} segments, {total_duration:.1f}s")
     return concat_path, total_duration, segment_timings
 
@@ -120,9 +168,9 @@ def regenerate_video(seq: str, config: dict) -> bool:
     output_media = Path('output/douyin/media')
     output_media.mkdir(parents=True, exist_ok=True)
 
-    tts = TTSSynthesizer(config)
+    speech_provider = _create_speech_provider(config)
     audio_path, total_dur, scene_timings = _generate_tts_from_audio_segments(
-        segments, seq, output_media, tts, voice_direction,
+        segments, seq, output_media, speech_provider, voice_direction,
     )
     if not audio_path or not total_dur:
         logger.error(f"[{seq}] TTS failed")
@@ -154,15 +202,13 @@ def regenerate_video(seq: str, config: dict) -> bool:
                     f"dur={s.get('duration','?')}s anim={s.get('animation','?')}")
 
     # ── Step 4: Remotion render ──
-    vgen = VideoGenerator(config)
-    vgen.planner = video_planner
-    vgen.tts = tts
-
+    remotion_provider = RemotionVideoProvider(config)
     filename = f"content_{seq}_remotion"
     logger.info(f"[{seq}] Rendering Remotion video ({total_dur:.1f}s)...")
 
-    video_path = vgen.generate(
-        narration, filename,
+    video_path = remotion_provider.generate(
+        prompt=narration,
+        filename=filename,
         audio_url=str(dst_audio),
         subtitles=narration,
         keywords=None,

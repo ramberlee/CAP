@@ -11,7 +11,9 @@ import dashscope
 from dashscope import VideoSynthesis
 
 from .. import VideoProvider
-from .._subtitle_utils import SubtitleConfig, download_video, finalize_video
+from .._subtitle_builder import SubtitleConfig, finalize_video
+from .._ffmpeg_utils import download_video
+from ...config_model import DashScopeConfig, GenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +21,14 @@ logger = logging.getLogger(__name__)
 class DashScopeVideoProvider(VideoProvider):
     """Video generation via DashScope (Alibaba Cloud) VideoSynthesis API."""
 
-    def __init__(self, config: dict):
-        ds_config = config.get("dashscope", {})
-        self.api_key = ds_config.get("api_key", "")
-        self.model = ds_config.get("video_model", "wan2.7-t2v")
-        self.size = ds_config.get("video_size", "1280*720")
-        self.duration = ds_config.get("video_duration", 15)
-        self.media_dir = Path(ds_config.get("media_dir", "media"))
+    def __init__(self, config: DashScopeConfig, generation: "GenerationConfig | None" = None):
+        self.api_key = config.api_key
+        self.model = config.video_model
+        self.size = config.video_size
+        self.duration = config.video_duration
+        self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
-        self.sub_config = SubtitleConfig.from_config(config)
+        self.sub_config = SubtitleConfig.from_config(generation) if generation else SubtitleConfig()
         self.poll_interval = 5
         self.max_poll_time = 600
         dashscope.api_key = self.api_key
