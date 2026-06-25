@@ -102,7 +102,8 @@ class ArkConfig(DictCompatMixin):
     video_size: str = "1280*720"
     video_duration: int = 15
     tts_model: str = "doubao-seed-tts-2.0"
-    tts_voice: str = "zh_female_shuangkuaisisi_moon_bigtts"
+    tts_resource_id: str = "seed-tts-2.0"
+    tts_voice: str = "zh_female_gaolengyujie_uranus_bigtts"
     planner_model: Optional[str] = None
     media_dir: str = "media"
     asr_enabled: bool = False

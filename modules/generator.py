@@ -56,16 +56,164 @@ CATEGORY_SYSTEM_PROMPTS = {
         "你正在为一个AI领域的内容账号创作「道」系列内容，账号定位是：「AI时代必备心法。在这里，看懂AI的道与术。」"
         "「道」系列关注社会趋势、人性洞察、时代变迁，用AI思维提供独特的观察视角。"
         "内容要求：从宏观视角解读社会热点，提供认知升级的洞察，而非就事论事。"
-        "请严格按照要求的JSON格式输出。"
+        "核心目标：让观众看完觉得「原来这事还能这么看」——提供反常识的认知升级。"
     ),
     "shu": (
         "你是一个AI领域的内容创作专家。"
         "你正在为一个AI领域的内容账号创作「术」系列内容，账号定位是：「AI时代必备心法。在这里，看懂AI的道与术。」"
         "「术」系列关注AI技术本身，解读技术原理、应用场景、实操方法。"
         "内容要求：有具体的技术细节、工具名称、使用方法，提供实操价值，而非泛泛而谈。"
-        "请严格按照要求的JSON格式输出。"
+        "核心目标：让观众看完就能用上——提供可复现的实用教程。"
     ),
 }
+
+
+# ── Multi-step generation prompts ──
+# Each step focuses on one part of the content, building on the previous step.
+
+STEP_ANGLE_PROMPT = """你是一个AI领域的内容创作专家。
+
+热点话题：{topic}
+类别：{category_name}
+
+## 你的任务
+为这个话题确定内容创作的「切入点」。不要直接写完整脚本，先回答以下3个问题：
+
+1. **核心论点**：针对这个话题，你的核心观点是什么？必须反常识、有认知冲击，不能是大众都知道的结论。
+{category_angle_extra}
+
+2. **情绪基调**：这段口播应该营造什么情绪氛围？（如：震撼/反讽/好奇/深思/紧迫等）
+
+3. **目标感受**：你希望观众看完后产生什么感受或行动？（如：恍然大悟/想去试试/想转发讨论等）
+
+## 输出格式
+```json
+{{
+  "core_argument": "一句话说清楚核心论点",
+  "emotional_tone": "情绪基调（2-4字）",
+  "target_feeling": "目标感受（一句话）",
+  "brief_summary": "用3句话概括整个脚本的脉络：钩子切入点 + 价值段展开方向 + 收尾落点"
+}}
+```"""
+
+STEP_HOOK_PROMPT = """你是一个抖音短视频脚本创作者。
+
+热点话题：{topic}
+核心论点：{core_argument}
+情绪基调：{emotional_tone}
+
+## 你的任务
+只写口播的「钩子」——也就是前3秒的抓人句。不要写后面的价值段和收尾。
+
+## 钩子要求
+1. 一句话，必须能在3秒内说完（20-40字）
+2. 制造认知冲突/悬念/反常识，让观众停不下来
+3. 必须和你的核心论点直接相关，不能为了hook而hook
+4. 禁止用"大家好""今天我们来聊""你知道吗"等平淡开场
+5. 语气要口语化，像面对面聊天
+
+## 输出格式
+```json
+{{
+  "hook": "一句话钩子"
+}}
+```"""
+
+STEP_BODY_DAO_PROMPT = """你是一个抖音短视频脚本创作者。
+
+热点话题：{topic}
+核心论点：{core_argument}
+情绪基调：{emotional_tone}
+钩子：{hook}
+
+## 你的任务
+只写口播的「价值段」——也就是核心内容部分。这是整个视频的主体，提供认知升级。
+
+## 内容深度要求
+- **必须包含至少 3 个独立论点/案例/视角**，每个论点要展开2-3句话，不能只有一个观点翻来覆去说
+- **展开方式**：每个论点用具体的案例、数据、跨领域类比、或逻辑推理来支撑
+- **信息密度**：整个价值段建议写 400-800 字，内容要充分展开
+- **结构节奏**：每个论点之间用"留人点"过渡（反问句、数据冲击、悬念过渡等）
+- **金句**：至少 1 句能让人记住的话
+
+## 反面教材
+- ❌ 只说"AI时代来了，我们要拥抱"——这是废话
+- ❌ 只罗列新闻事实，没有自己的角度和判断
+- ❌ 贩卖焦虑而不给出建设性视角
+- ❌ 空洞的鸡汤式结论
+- ❌ 内容太短，论点没展开就结束了
+
+## 输出格式
+```json
+{{
+  "body": "价值段全文。至少3个独立论点，每个论点2-3句展开。口语化，有情绪。不用加【价值】前缀。"
+}}
+```"""
+
+STEP_BODY_SHU_PROMPT = """你是一个抖音短视频脚本创作者。
+
+热点话题：{topic}
+核心论点：{core_argument}
+情绪基调：{emotional_tone}
+钩子：{hook}
+
+## 你的任务
+只写口播的「价值段」——也就是核心教程内容。这是整个视频的主体，提供可复现的实操方法。
+
+## 内容深度要求（必须全部覆盖）
+1. **具体工具/技术名称**：明确告诉观众用什么工具
+2. **分步骤操作**：按"第一步、第二步、第三步"的结构组织，每一步清晰可执行
+3. **效果展示**：用具体数据/对比说明效果
+4. **避坑提示**：至少1个常见坑或注意事项
+5. **适用场景**：说明适合什么场景
+
+## 反面教材
+- ❌ 只说"XX 工具很强大"但不展示怎么用
+- ❌ 泛泛而谈"AI 能提高效率"而没有具体步骤
+- ❌ 理想化的"完美方案"而没有踩坑提醒
+- ❌ 不接地气的专业术语堆砌
+
+## 输出格式
+```json
+{{
+  "body": "价值段全文。口语化，分步骤讲解。不用加【价值】前缀。"
+}}
+```"""
+
+STEP_ENDING_PROMPT = """你是一个抖音短视频脚本创作者。
+
+热点话题：{topic}
+核心论点：{core_argument}
+情绪基调：{emotional_tone}
+钩子：{hook}
+价值段内容：{body}
+
+## 你的任务
+完成口播的最后两部分：
+
+### 1. 收尾句
+一句话留下思考空间或引导互动。必须包含具体的互动话术。
+{category_ending_style}
+
+### 2. 视频标题
+15-20字，带话题感，适合搜索推荐。突出核心观点。
+{category_title_style}
+
+### 3. 话题标签
+3-5个热门话题标签，必须包含 #AI 相关标签。
+
+### 4. 视频描述（description）
+20-50字短视频简介，用于抖音发布时的文案区。精简有力，包含核心观点，不要重复标题。
+
+## 输出格式
+```json
+{{
+  "title": "视频标题（15-20字）",
+  "description": "20-50字短视频简介",
+  "ending": "收尾句（包含互动话术）",
+  "tags": ["#话题1", "#话题2", "#话题3", "#AI"]
+}}
+```"""
 
 
 def get_enabled_platforms(config: AppConfig) -> list[str]:
@@ -158,10 +306,9 @@ class ContentGenerator:
         self.auto_video = config.generation.auto_video
 
         # Video provider metadata (used by _process_videos)
+        # Reads from the correct config section based on active provider
         self._video_provider_name = config.generation.video_provider
-        self._video_model = config.dashscope.video_model
-        self._video_size = config.dashscope.video_size
-        self._video_max_duration = config.dashscope.video_duration
+        self._video_model, self._video_size, self._video_max_duration = self._resolve_video_config(config)
         self._video_subtitles = config.generation.video_subtitles
         self._sub_config = SubtitleConfig.from_config(config)
 
@@ -169,6 +316,24 @@ class ContentGenerator:
         self.ds_api_key = config.dashscope.api_key
 
         self._templates = {}
+
+    @staticmethod
+    def _resolve_video_config(config: AppConfig) -> tuple[str, str, int]:
+        """Resolve video model, size, and max duration from the active provider's config.
+
+        Previously hardcoded to dashscope — now reads from the correct section.
+        """
+        provider = config.generation.video_provider
+        if provider == "ark":
+            return (config.ark.video_model, config.ark.video_size, config.ark.video_duration)
+        elif provider == "agnes":
+            size = f"{config.agnes.video_width}*{config.agnes.video_height}"
+            # Agnes duration is frame-based, estimate ~5s default
+            return (config.agnes.video_model, size, 15)
+        elif provider == "remotion":
+            return ("remotion", "1920*1080", 60)
+        else:
+            return (config.dashscope.video_model, config.dashscope.video_size, config.dashscope.video_duration)
 
     @classmethod
     def from_config(cls, db: Database, config: AppConfig) -> "ContentGenerator":
@@ -316,11 +481,22 @@ class ContentGenerator:
         return result
 
     # ──────────────────────────────────────────────────────────────────────────
-    # LLM content generation
+    # LLM content generation (single-pass, for non-douyin platforms)
     # ──────────────────────────────────────────────────────────────────────────
 
     def _generate_for_platform(self, topic: str, platform: str, category: str = "dao") -> Optional[dict]:
-        """Generate content for a specific platform."""
+        """Generate content for a specific platform.
+
+        For douyin, uses multi-step generation (angle → hook → body → ending).
+        For other platforms, uses the single-pass template approach.
+        """
+        if platform == "douyin":
+            result = self._generate_douyin_multi_step(topic, category)
+            if result:
+                result = self._validate_and_repair(result, platform, category)
+            return result
+
+        # ── Non-douyin platforms: single-pass template approach ──
         template = self._load_template(platform, category)
         prompt = template.replace("{topic}", topic)
 
@@ -361,6 +537,173 @@ class ContentGenerator:
             return None
         except Exception as e:
             logger.error(f"Generation failed for {platform}: {e}")
+            return None
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Multi-step generation for Douyin (angle → hook → body → ending)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _llm_json(self, system_prompt: str, user_prompt: str, max_tokens: int = 1024) -> dict | None:
+        """Call LLM and parse JSON response. Returns parsed dict or None."""
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                temperature=self.gen_config.temperature,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            text = response.choices[0].message.content
+            json_start = text.find("{")
+            json_end = text.rfind("}") + 1
+            if json_start == -1 or json_end == 0:
+                logger.error(f"No JSON found in LLM response")
+                return None
+            return json.loads(text[json_start:json_end])
+        except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"LLM JSON call failed: {e}")
+            return None
+
+    def _generate_douyin_multi_step(self, topic: str, category: str = "dao") -> dict | None:
+        """Multi-step content generation for Douyin.
+
+        Steps:
+        1. Angle — determine core argument, emotional tone, target feeling
+        2. Hook — write the 3-second hook sentence
+        3. Body — expand the value section (dao: ≥3 points; shu: step-by-step)
+        4. Ending — write ending, title, description, tags
+        """
+        category_name = "「道」认知提升" if category == "dao" else "「术」实用教程"
+        system_prompt = CATEGORY_SYSTEM_PROMPTS.get(category, CATEGORY_SYSTEM_PROMPTS["dao"])
+
+        # ── Step 1: Angle ──
+        logger.info(f"[多步生成-1/4] 定调: {topic[:40]}...")
+        angle_extra = (
+            "2. 至少给出 3 个可能的切入点方向，选择最有冲击力的那个"
+            if category == "dao"
+            else "2. 确定一个具体的工具/技术作为教程主角"
+        )
+        angle_prompt = STEP_ANGLE_PROMPT.format(
+            topic=topic, category_name=category_name,
+            category_angle_extra=angle_extra,
+        )
+        angle_result = self._llm_json(system_prompt, angle_prompt, max_tokens=512)
+        if not angle_result:
+            logger.warning("Step 1 (angle) failed, falling back to single-pass")
+            return self._generate_douyin_single_pass_fallback(topic, category)
+
+        core_argument = angle_result.get("core_argument", "")
+        emotional_tone = angle_result.get("emotional_tone", "好奇")
+        logger.info(f"  → 论点: {core_argument[:60]}... | 基调: {emotional_tone}")
+
+        # ── Step 2: Hook ──
+        logger.info("[多步生成-2/4] 写钩子...")
+        hook_prompt = STEP_HOOK_PROMPT.format(
+            topic=topic, core_argument=core_argument, emotional_tone=emotional_tone,
+        )
+        hook_result = self._llm_json(system_prompt, hook_prompt, max_tokens=256)
+        if not hook_result:
+            logger.warning("Step 2 (hook) failed, falling back to single-pass")
+            return self._generate_douyin_single_pass_fallback(topic, category)
+
+        hook = hook_result.get("hook", "").strip()
+        logger.info(f"  → 钩子: {hook[:50]}...")
+
+        # ── Step 3: Body ──
+        logger.info("[多步生成-3/4] 扩展正文...")
+        body_template = STEP_BODY_DAO_PROMPT if category == "dao" else STEP_BODY_SHU_PROMPT
+        body_prompt = body_template.format(
+            topic=topic, core_argument=core_argument,
+            emotional_tone=emotional_tone, hook=hook,
+        )
+        body_result = self._llm_json(system_prompt, body_prompt, max_tokens=self.gen_config.max_tokens)
+        if not body_result:
+            logger.warning("Step 3 (body) failed, falling back to single-pass")
+            return self._generate_douyin_single_pass_fallback(topic, category)
+
+        body_text = body_result.get("body", "").strip()
+        logger.info(f"  → 正文: {len(body_text)}字")
+
+        # ── Step 4: Ending ──
+        logger.info("[多步生成-4/4] 收尾...")
+        ending_style = (
+            "道系列适合：反思型/选择型/讨论型互动话术"
+            if category == "dao"
+            else "术系列适合：行动型/收藏型/挑战型互动话术"
+        )
+        title_style = (
+            "道系列：体现AI洞察和认知角度，带话题感"
+            if category == "dao"
+            else "术系列：突出技术干货和效果数字"
+        )
+        ending_prompt = STEP_ENDING_PROMPT.format(
+            topic=topic, core_argument=core_argument,
+            emotional_tone=emotional_tone, hook=hook,
+            body=body_text,
+            category_ending_style=ending_style,
+            category_title_style=title_style,
+        )
+        ending_result = self._llm_json(system_prompt, ending_prompt, max_tokens=512)
+        if not ending_result:
+            logger.warning("Step 4 (ending) failed, using fallback ending")
+            ending_result = {
+                "title": topic[:18],
+                "description": core_argument[:40],
+                "ending": "你觉得呢？评论区告诉我。",
+                "tags": ["#AI", "#人工智能", "#认知升级"],
+            }
+
+        title = ending_result.get("title", topic[:18])
+        description = ending_result.get("description", "")
+        ending = ending_result.get("ending", "你觉得呢？评论区告诉我。")
+        tags = ending_result.get("tags") or []
+        if not tags:
+            tag_holder = {"title": title, "tags": []}
+            self._ensure_tags(tag_holder, category)
+            tags = tag_holder.get("tags", [])
+
+        # ── Assemble final script ──
+        script = f"【钩子】{hook}\n\n---\n\n【价值】{body_text}\n\n---\n\n【收尾】{ending}"
+        result = {
+            "title": title,
+            "description": description,
+            "script": script,
+            "tags": tags,
+        }
+
+        logger.info(f"多步生成完成: {title[:30]} | {len(script)}字")
+        return result
+
+    def _generate_douyin_single_pass_fallback(self, topic: str, category: str = "dao") -> dict | None:
+        """Fallback: use the template-based single-pass approach for douyin."""
+        logger.info("Using single-pass fallback for douyin...")
+        template = self._load_template("douyin", category)
+        prompt = template.replace("{topic}", topic)
+        system_prompt = CATEGORY_SYSTEM_PROMPTS.get(category, CATEGORY_SYSTEM_PROMPTS["dao"])
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=self.gen_config.max_tokens,
+                temperature=self.gen_config.temperature,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            text = response.choices[0].message.content
+            json_start = text.find("{")
+            json_end = text.rfind("}") + 1
+            if json_start == -1 or json_end == 0:
+                return None
+            result = json.loads(text[json_start:json_end])
+            if not result.get("tags"):
+                self._ensure_tags(result, category)
+            return result
+        except Exception as e:
+            logger.error(f"Single-pass fallback failed: {e}")
             return None
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -710,7 +1053,7 @@ class ContentGenerator:
             logger.info("Generating video description via LLM (text-to-video template)...")
             response = self.client.chat.completions.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=2048,
                 temperature=0.7,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -743,6 +1086,86 @@ class ContentGenerator:
         except Exception as e:
             logger.error(f"Video description generation failed: {e}")
             return None
+
+    def _generate_segment_video_descriptions(
+        self,
+        segments: list[dict],
+        title: str,
+        category: str = "dao",
+    ) -> list[str]:
+        """Batch-generate per-segment video descriptions in a single LLM call.
+
+        Each segment has 'index', 'duration', and 'text'. Returns a list of
+        video prompt strings in the same order.
+        """
+        if not segments:
+            return []
+
+        # Build a prompt listing all segments
+        seg_lines = []
+        for s in segments:
+            seg_lines.append(
+                f"【第{s['index']+1}段】（时长{s['duration']:.0f}秒）\n"
+                f"旁白内容：{s['text']}\n"
+            )
+        segs_text = "\n".join(seg_lines)
+
+        prompt = (
+            "你是一个短视频导演。下面是一段抖音口播文案，已按时间分为多段，"
+            "每段配有一段旁白。请为**每一段**分别写一个视频画面提示词（中文），"
+            "用于文生视频模型生成该段对应的画面。\n\n"
+            "要求：\n"
+            "1. 每段提示词独立，画面要与该段旁白内容相关\n"
+            "2. 相邻段的画面要有变化，避免重复，形成视觉叙事节奏\n"
+            "3. 每段提示词控制在50字以内，简洁具体\n"
+            "4. 包含镜头描述（如：推近、拉远、特写、平移等）\n"
+            "5. 输出 JSON 数组，格式：[\"第1段提示词\", \"第2段提示词\", ...]\n"
+            "6. 只输出 JSON，不要解释\n\n"
+            f"文案标题：{title}\n\n"
+            f"{segs_text}"
+        )
+
+        try:
+            logger.info(f"Batch-generating {len(segments)} segment video descriptions...")
+            response = self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=2048,
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": "你是一个短视频导演，负责为口播文案的每一段生成对应的视频画面提示词。"},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            text = response.choices[0].message.content.strip()
+
+            # Extract JSON array
+            array_start = text.find("[")
+            array_end = text.rfind("]") + 1
+            if array_start >= 0 and array_end > array_start:
+                try:
+                    prompts = json.loads(text[array_start:array_end])
+                    if isinstance(prompts, list) and len(prompts) == len(segments):
+                        prompts = [p.strip() for p in prompts if isinstance(p, str)]
+                        logger.info(f"Generated {len(prompts)} segment video prompts")
+                        return prompts
+                except json.JSONDecodeError:
+                    pass
+
+            # Fallback: try to extract line by line
+            prompts = []
+            for line in text.split("\n"):
+                line = line.strip().strip('",')
+                if line and not line.startswith("[") and not line.startswith("]"):
+                    prompts.append(line)
+            if len(prompts) >= len(segments):
+                logger.info(f"Extracted {len(prompts)} prompts (line-based fallback)")
+                return prompts[:len(segments)]
+
+            logger.warning(f"Failed to parse segment prompts, using fallback")
+            return []
+        except Exception as e:
+            logger.error(f"Segment video description batch generation failed: {e}")
+            return []
 
     # ──────────────────────────────────────────────────────────────────────────
     # Video processing (the big one)
@@ -956,13 +1379,40 @@ class ContentGenerator:
                 )
                 logger.info(f"Audio split into {len(segments)} segments for multi-segment video")
 
+                # Split script text proportionally by audio segment duration
+                script_chars = len(script_text)
+                total_audio_dur = audio_duration or 1.0
+                segment_scripts = []
+                for i, seg in enumerate(segments):
+                    seg_frac = seg["duration"] / total_audio_dur
+                    seg_start_char = int(sum(s["duration"] for s in segments[:i]) / total_audio_dur * script_chars)
+                    seg_end_char = int(seg_start_char + seg_frac * script_chars)
+                    seg_script = script_text[seg_start_char:seg_end_char].strip()
+                    if not seg_script:
+                        seg_script = script_text[:50]
+                    segment_scripts.append({
+                        "index": i,
+                        "duration": seg["duration"],
+                        "text": seg_script,
+                    })
+
+                # Batch-generate per-segment video descriptions in one LLM call
+                seg_video_descs = self._generate_segment_video_descriptions(
+                    segment_scripts, topic_title, category,
+                )
+
                 segment_videos = []
                 for i, seg in enumerate(segments):
                     seg_oss = self._upload_to_oss(seg["path"], self._video_model)
                     seg_filename = f"content_{content_id}_seg{i}.mp4"
-                    logger.info(f"Generating video segment {i+1}/{len(segments)} ({seg['duration']:.1f}s)...")
+                    seg_video_desc = seg_video_descs[i] if i < len(seg_video_descs) else video_desc
+
+                    logger.info(
+                        f"Generating video segment {i+1}/{len(segments)} ({seg['duration']:.1f}s): "
+                        f"{seg_video_desc[:40]}..."
+                    )
                     seg_video = self.video_provider.generate(
-                        prompt=video_desc,
+                        prompt=seg_video_desc,
                         filename=seg_filename,
                         audio_url=seg_oss,
                         audio_duration=seg["duration"],

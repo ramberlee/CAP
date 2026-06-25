@@ -61,8 +61,8 @@ dashscope:
   media_dir: "media"
   # 文生视频配置（Wan2.7-T2V）
   video_model: "wan2.7-t2v"              # 可选: wan2.7-t2v / wan2.7-t2v-plus
-  video_size: "1280*720"                  # 视频分辨率
-  # video_duration: 15                    # API 模型上限（非内容约束），Remotion 路径忽略此项
+  video_size: "1280*720"                  # 视频分辨率（默认横屏）
+  # video_duration: 15                    # API 单段时长上限（秒）
 
 # Remotion 视频渲染配置（文字动画视频，时长由内容自动决定）
 remotion:
@@ -92,11 +92,13 @@ ark:
   image_model: ""                         # 如 doubao-seedream-2.0-t2i-250529
   image_size: "1472*1104"                 # 图片分辨率
   # 文生视频模型
-  video_model: ""                         # 如 doubao-seedance-1.0-pro-250528
-  video_size: "1280*720"                  # 视频分辨率
+  video_model: ""                         # 如 doubao-seedance-1.5-pro-250605
+  video_size: "720*1280"                  # 视频分辨率（竖屏 9:16，适合抖音）
+  # video_duration: 15                    # API 单段时长上限（秒）
   # TTS 语音合成（OpenAI 兼容格式，同 chat/completions 的 audio 参数）
   tts_model: ""                           # 如 doubao-tts-1.0
-  tts_voice: "zh_female_shuangkuaisisi_moon_bigtts"
+  tts_resource_id: "seed-tts-2.0"         # TTS 资源 ID
+  tts_voice: "zh_female_gaolengyujie_uranus_bigtts"
   # Planner 模型（留空则复用 model）
   planner_model: ""
   # 媒体保存目录

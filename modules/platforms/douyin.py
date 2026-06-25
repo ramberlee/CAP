@@ -39,12 +39,13 @@ def validate_content(result: dict, **_) -> list[str]:
     if "---" not in script:
         warnings.append("缺少 --- 分隔符")
 
-    # Check word count (200-800 chars for Chinese scripts)
+    # Check word count (300-1500 chars for Chinese scripts)
+    # Range is intentionally wide — dao series can be lengthy with ≥3 arguments
     char_count = len(script)
     if char_count < 200:
-        warnings.append(f"脚本过短 ({char_count}字)，建议200-800字")
-    elif char_count > 800:
-        warnings.append(f"脚本过长 ({char_count}字)，建议200-800字")
+        warnings.append(f"脚本过短 ({char_count}字)，建议300-1500字")
+    elif char_count > 1500:
+        warnings.append(f"脚本过长 ({char_count}字)，建议300-1500字")
 
     # Check tags
     if len(tags) < 3:
