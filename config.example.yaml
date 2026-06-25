@@ -146,8 +146,7 @@ platforms:
     headless: false
     # 浏览器通道: chrome / msedge（使用系统已安装的浏览器）
     channel: "msedge"
-    # 发布后等待秒数（留给验证码/审核弹窗处理时间）
-
+    
   douyin:
     enabled: true                    # 是否启用该平台（内容生成 + 发布）
     # Playwright cookie 存储路径
@@ -159,7 +158,6 @@ platforms:
     # 发布后等待秒数（留给验证码/审核弹窗处理时间）
     post_publish_wait: 30
 
-# 数据库
 # 图片搜索（用于 Remotion image_text 场景配图）
 image_search:
   provider: "pexels"              # pexels / unsplash / picsum / placeholder
@@ -168,6 +166,7 @@ image_search:
   download_dir: "media/images"    # 图片下载目录
   orientation: "portrait"         # portrait / landscape / square
 
+# 数据库
 database:
   path: "db/pipeline.db"
 

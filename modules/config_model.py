@@ -123,7 +123,6 @@ class GenerationConfig(DictCompatMixin):
     max_tokens: int = 4096
     temperature: float = 0.7
     default_limit: int = 1
-    model: str = "mimo-v2.5-pro"
     auto_image: bool = False
     auto_video: bool = False
     text_provider: str = "mimo"

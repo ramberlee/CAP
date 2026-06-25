@@ -133,6 +133,7 @@ class ContentGenerator:
         # Remotion-specific planners (optional, created by from_config)
         audio_planner: AudioPlanner | None = None,
         video_planner: VideoPlanner | None = None,
+        model: str | None = None,
     ):
         self.db = db
         self.config = config
@@ -140,6 +141,7 @@ class ContentGenerator:
 
         # ── Injected dependencies ──
         self.client = client
+        self.model = model
         self.image_provider = image_provider
         self.video_provider = video_provider
         self.speech_provider = speech_provider
@@ -177,13 +179,15 @@ class ContentGenerator:
         """
         text_provider = config.generation.text_provider
 
-        # ── LLM client ──
+        # ── LLM client + model ──
         if text_provider == "ark":
             api_key = config.ark.api_key
             base_url = config.ark.base_url
+            model = config.ark.model
         else:
             api_key = config.mimo.api_key
             base_url = config.mimo.base_url
+            model = config.mimo.model
 
         client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
 
@@ -207,6 +211,7 @@ class ContentGenerator:
         return cls(
             db, config,
             client=client,
+            model=model,
             image_provider=image_provider,
             video_provider=video_provider,
             speech_provider=speech_provider,
@@ -290,14 +295,14 @@ class ContentGenerator:
         max_repair = platform_cfg.max_repair
 
         for attempt in range(max_repair + 1):
-            issues = validator(result, category=category, client=self.client, model=self.gen_config.model)
+            issues = validator(result, category=category, client=self.client, model=self.model)
             if not issues:
                 break
             if attempt < max_repair and repairer:
                 logger.info(f"[{platform}质量校验] 第 {attempt+1} 次修复...")
                 repaired = repairer(
                     result, issues, category=category,
-                    client=self.client, model=self.gen_config.model,
+                    client=self.client, model=self.model,
                     max_tokens=self.gen_config.max_tokens,
                 )
                 if repaired:
@@ -324,7 +329,7 @@ class ContentGenerator:
 
         try:
             response = self.client.chat.completions.create(
-                model=self.gen_config.model,
+                model=self.model,
                 max_tokens=self.gen_config.max_tokens,
                 temperature=self.gen_config.temperature,
                 messages=[
@@ -479,7 +484,7 @@ class ContentGenerator:
 
         try:
             response = self.client.chat.completions.create(
-                model=self.gen_config.model,
+                model=self.model,
                 max_tokens=100,
                 temperature=0.7,
                 messages=[
@@ -704,7 +709,7 @@ class ContentGenerator:
         try:
             logger.info("Generating video description via LLM (text-to-video template)...")
             response = self.client.chat.completions.create(
-                model=self.gen_config.model,
+                model=self.model,
                 max_tokens=1024,
                 temperature=0.7,
                 messages=[
