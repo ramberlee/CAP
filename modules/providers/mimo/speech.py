@@ -28,7 +28,7 @@ class MiMoSpeechProvider(SpeechProvider):
         self.model = config.tts_model
         self.voice = config.tts_voice
 
-        self.media_dir = Path("media")
+        self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
         self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
