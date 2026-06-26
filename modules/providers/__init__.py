@@ -25,13 +25,24 @@ class VideoProvider(ABC):
         self,
         prompt: str,
         filename: str,
-        audio_url: Optional[str] = None,
+        audio_path: Optional[str] = None,
         subtitles: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         audio_duration: Optional[float] = None,
         scene_timings: Optional[list[dict]] = None,
     ) -> Optional[str]:
-        """Generate a video. Returns local file path or None."""
+        """Generate a video. Returns local file path or None.
+
+        Args:
+            prompt: Video description prompt.
+            filename: Output filename.
+            audio_path: Local path to audio file. Each provider decides
+                how to handle it (upload to OSS, use locally, etc.).
+            subtitles: Subtitle text to burn in.
+            keywords: Keywords to highlight in subtitles.
+            audio_duration: Duration of the audio in seconds.
+            scene_timings: Per-scene timing for subtitle sync.
+        """
         ...
 
 

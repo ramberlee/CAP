@@ -42,7 +42,7 @@ class RemotionVideoProvider(VideoProvider):
         self,
         prompt: str,
         filename: str,
-        audio_url: str | None = None,
+        audio_path: str | None = None,
         subtitles: str | None = None,
         keywords: list[str] | None = None,
         audio_duration: float | None = None,
@@ -52,7 +52,7 @@ class RemotionVideoProvider(VideoProvider):
         return self._generate_remotion(
             script=prompt,
             filename=filename,
-            audio_path=audio_url,
+            audio_path=audio_path,
             keywords=keywords,
             audio_duration=audio_duration,
             scene_timings=scene_timings,

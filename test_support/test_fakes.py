@@ -50,7 +50,7 @@ class TestFakeVideoProvider:
         result = provider.generate(
             "video with audio",
             "audio_vid.mp4",
-            audio_url="/path/to/audio.wav",
+            audio_path="/path/to/audio.wav",
             subtitles="Hello world",
             keywords=["AI", "tech"],
             audio_duration=30.0,
@@ -58,7 +58,7 @@ class TestFakeVideoProvider:
         )
         assert result is not None
         call = provider.generated[0]
-        assert call["audio_url"] == "/path/to/audio.wav"
+        assert call["audio_path"] == "/path/to/audio.wav"
         assert call["subtitles"] == "Hello world"
         assert call["keywords"] == ["AI", "tech"]
         assert call["audio_duration"] == 30.0

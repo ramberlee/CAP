@@ -83,7 +83,7 @@ class RemotionConfig(DictCompatMixin):
 class AgnesConfig(DictCompatMixin):
     api_key: str = ""
     image_model: str = "ag-elite-v2"
-    video_model: str = "ag-video-1"
+    video_model: str = "agnes-video-v2.0"
     media_dir: str = "media"
     # Video generation parameters
     video_width: int = 1152
@@ -98,9 +98,9 @@ class ArkConfig(DictCompatMixin):
     model: str = "deepseek-r1-250528"
     image_model: str = "doubao-seedream-2.0-t2i-250529"
     image_size: str = "1472*1104"
-    video_model: str = "doubao-seedance-1.0-pro-250528"
+    video_model: str = "doubao-seedance-1.5-pro-250611"
     video_size: str = "1280*720"
-    video_duration: int = 15
+    video_duration: int = 12
     tts_model: str = "doubao-seed-tts-2.0"
     tts_resource_id: str = "seed-tts-2.0"
     tts_voice: str = "zh_female_gaolengyujie_uranus_bigtts"

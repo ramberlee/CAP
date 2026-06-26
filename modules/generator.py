@@ -42,7 +42,6 @@ from modules.providers._ffmpeg_utils import (
     merge_audio as _merge_audio,
 )
 from modules.video_planner import AudioPlanner, VideoPlanner
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -311,9 +310,6 @@ class ContentGenerator:
         self._video_model, self._video_size, self._video_max_duration = self._resolve_video_config(config)
         self._video_subtitles = config.generation.video_subtitles
         self._sub_config = SubtitleConfig.from_config(config)
-
-        # DashScope API key for OSS upload
-        self.ds_api_key = config.dashscope.api_key
 
         self._templates = {}
 
@@ -704,58 +700,6 @@ class ContentGenerator:
             return result
         except Exception as e:
             logger.error(f"Single-pass fallback failed: {e}")
-            return None
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # OSS upload (DashScope)
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _upload_to_oss(self, file_path: str, model_name: str) -> str | None:
-        """Upload a local file to DashScope OSS and return oss:// URL."""
-        if not self.ds_api_key:
-            logger.warning("DashScope API key not configured, skipping upload")
-            return None
-
-        try:
-            policy_url = "https://dashscope.aliyuncs.com/api/v1/uploads"
-            headers = {
-                "Authorization": f"Bearer {self.ds_api_key}",
-                "Content-Type": "application/json",
-            }
-            params = {"action": "getPolicy", "model": model_name}
-            resp = requests.get(policy_url, headers=headers, params=params, timeout=10)
-            if resp.status_code != 200:
-                logger.error(f"Get upload policy failed: {resp.text}")
-                return None
-
-            policy_data = resp.json().get("data", {})
-
-            file_name = Path(file_path).name
-            key = f"{policy_data['upload_dir']}/{file_name}"
-
-            with open(file_path, "rb") as f:
-                files = {
-                    "OSSAccessKeyId": (None, policy_data["oss_access_key_id"]),
-                    "Signature": (None, policy_data["signature"]),
-                    "policy": (None, policy_data["policy"]),
-                    "x-oss-object-acl": (None, policy_data.get("x_oss_object_acl", "private")),
-                    "x-oss-forbid-overwrite": (None, policy_data.get("x_oss_forbid_overwrite", "true")),
-                    "key": (None, key),
-                    "success_action_status": (None, "200"),
-                    "file": (file_name, f),
-                }
-                resp = requests.post(policy_data["upload_host"], files=files, timeout=60)
-
-            if resp.status_code != 200:
-                logger.error(f"Upload file to OSS failed: {resp.text}")
-                return None
-
-            oss_url = f"oss://{key}"
-            logger.info(f"File uploaded to OSS: {oss_url}")
-            return oss_url
-
-        except Exception as e:
-            logger.error(f"OSS upload failed: {e}")
             return None
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -1234,7 +1178,6 @@ class ContentGenerator:
                 logger.warning("AudioPlan failed, falling back to raw script TTS")
 
         # --- TTS audio generation ---
-        audio_oss_url = None
         src_audio = None
         audio_duration = None
         scene_timings = []
@@ -1349,11 +1292,11 @@ class ContentGenerator:
         logger.info(f"Generating video: {video_desc[:60]}...")
 
         if is_remotion:
-            audio_url_arg = str(src_audio) if src_audio else None
+            audio_path_arg = str(src_audio) if src_audio else None
             video_path = self.video_provider.generate(
                 prompt=video_desc,
                 filename=filename,
-                audio_url=audio_url_arg,
+                audio_path=audio_path_arg,
                 subtitles=subtitle_text,
                 keywords=tags,
                 audio_duration=audio_duration,
@@ -1369,7 +1312,7 @@ class ContentGenerator:
         else:
             # Text-to-video: multi-segment when audio exceeds API limit
             api_max = self._video_max_duration or 15
-            needs_split = audio_duration and audio_duration > api_max + 1
+            needs_split = audio_duration and audio_duration > api_max
 
             if needs_split and src_audio:
                 seg_dir = output_media / f"segs_{content_id}"
@@ -1403,7 +1346,6 @@ class ContentGenerator:
 
                 segment_videos = []
                 for i, seg in enumerate(segments):
-                    seg_oss = self._upload_to_oss(seg["path"], self._video_model)
                     seg_filename = f"content_{content_id}_seg{i}.mp4"
                     seg_video_desc = seg_video_descs[i] if i < len(seg_video_descs) else video_desc
 
@@ -1414,7 +1356,7 @@ class ContentGenerator:
                     seg_video = self.video_provider.generate(
                         prompt=seg_video_desc,
                         filename=seg_filename,
-                        audio_url=seg_oss,
+                        audio_path=seg["path"],
                         audio_duration=seg["duration"],
                     )
                     if seg_video:
@@ -1449,12 +1391,11 @@ class ContentGenerator:
                     except Exception:
                         pass
             else:
-                if src_audio and not audio_oss_url:
-                    audio_oss_url = self._upload_to_oss(str(src_audio), self._video_model)
+                audio_path_arg = str(src_audio) if src_audio else None
                 video_path = self.video_provider.generate(
                     prompt=video_desc,
                     filename=filename,
-                    audio_url=audio_oss_url,
+                    audio_path=audio_path_arg,
                     subtitles=subtitle_text,
                     keywords=tags,
                     audio_duration=audio_duration,

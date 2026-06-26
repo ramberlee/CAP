@@ -66,7 +66,7 @@ class FakeVideoProvider:
         self,
         prompt: str,
         filename: str,
-        audio_url: Optional[str] = None,
+        audio_path: Optional[str] = None,
         subtitles: Optional[str] = None,
         keywords: Optional[list[str]] = None,
         audio_duration: Optional[float] = None,
@@ -77,7 +77,7 @@ class FakeVideoProvider:
         call = {
             "prompt": prompt,
             "filename": filename,
-            "audio_url": audio_url,
+            "audio_path": audio_path,
             "subtitles": subtitles,
             "keywords": keywords,
             "audio_duration": audio_duration,

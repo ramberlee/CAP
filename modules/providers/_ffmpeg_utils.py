@@ -55,27 +55,39 @@ def probe_video_duration(video_path: str) -> float | None:
 
 # ─── Download Helpers ───────────────────────────────────────────────
 
-def download_video(video_url: str, filename: str, media_dir: Path) -> str | None:
-    """Download video from URL and save locally. Returns local path."""
-    try:
-        resp = requests.get(video_url, timeout=120, stream=True)
-        resp.raise_for_status()
+def download_video(video_url: str, filename: str, media_dir: Path,
+                   max_retries: int = 3) -> str | None:
+    """Download video from URL and save locally. Returns local path.
 
-        if not filename.endswith(".mp4"):
-            filename = filename.rsplit(".", 1)[0] + ".mp4"
+    Retries on connection errors / incomplete reads up to `max_retries` times.
+    """
+    import time
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(video_url, timeout=120, stream=True)
+            resp.raise_for_status()
 
-        filepath = media_dir / filename
-        total = 0
-        with open(filepath, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
-                total += len(chunk)
+            if not filename.endswith(".mp4"):
+                filename = filename.rsplit(".", 1)[0] + ".mp4"
 
-        logger.info(f"Video saved: {filepath} ({total} bytes)")
-        return str(filepath)
-    except Exception as e:
-        logger.error(f"Video download failed: {e}")
-        return None
+            filepath = media_dir / filename
+            total = 0
+            with open(filepath, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=65536):
+                    f.write(chunk)
+                    total += len(chunk)
+
+            logger.info(f"Video saved: {filepath} ({total} bytes)")
+            return str(filepath)
+        except Exception as e:
+            logger.warning(f"Video download failed (attempt {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                wait = 2 ** attempt
+                logger.info(f"Retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                logger.error(f"Video download failed after {max_retries} attempts: {e}")
+                return None
 
 
 # ─── Video Concatenation ────────────────────────────────────────────

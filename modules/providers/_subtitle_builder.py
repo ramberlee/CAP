@@ -36,8 +36,8 @@ class SubtitleConfig:
     fade_in: float = 0.15    # seconds
     fade_out: float = 0.15   # seconds
     margin_v: int = 50       # vertical margin (pixels)
-    outline: int = 2
-    shadow: int = 1
+    outline: int = 5
+    shadow: int = 0
 
     @classmethod
     def from_config(cls, config: "GenerationConfig | dict") -> "SubtitleConfig":
@@ -214,12 +214,19 @@ def _build_ass(text: str, duration: float, video_size: str,
     ]
 
     primary_color = _ass_color_with_alpha(sub_config.text_color, sub_config.alpha)
-    outline_color_ass = _ass_color_with_alpha(sub_config.border_color, 1.0)
 
+    # Pure black outline for maximum contrast (抖音/B站硬字幕风格)
+    outline_color_ass = _ass_color_with_alpha("#000000", 1.0)  # fully opaque black outline
+    # BackColour (shadow) — disabled since we use thick outline instead
+    bg_color = _ass_color_with_alpha("#000000", 0.0)  # transparent
+
+    # BorderStyle=1: thick black outline (轮廓线), no shadow, no background box
+    # This is the classic "hard subtitle" look: pure white text + very thick black stroke
     ass_parts.append(
         f"Style: Default,{sub_config.font},{sub_config.fontsize},"
-        f"{primary_color},{primary_color},{outline_color_ass},&H80000000,"
-        f"0,0,0,0,100,100,0,0,1,"
+        f"{primary_color},{primary_color},{outline_color_ass},{bg_color},"
+        f"-1,0,0,0,100,100,0,0,"  # Bold=-1 (force bold)
+        f"1,"  # BorderStyle=1: outline only
         f"{sub_config.outline},{sub_config.shadow},"
         f"{align_ass},10,10,{sub_config.margin_v},1"
     )
@@ -237,7 +244,9 @@ def _build_ass(text: str, duration: float, video_size: str,
 
         highlighted_lines = []
         for line in group:
-            hl_line = _highlight_keywords(line, kw_list, kw_color_hex, kw_fs, default_fs)
+            # Escape ASS special characters to prevent rendering issues
+            escaped_line = _escape_ass_text(line)
+            hl_line = _highlight_keywords(escaped_line, kw_list, kw_color_hex, kw_fs, default_fs)
             highlighted_lines.append(hl_line)
 
         group_text = "\\N".join(highlighted_lines)
@@ -426,6 +435,24 @@ def _html_to_ass_color(html_color: str) -> tuple[str, str, str]:
     if len(c) >= 6:
         return c[0:2], c[2:4], c[4:6]
     return "FF", "FF", "FF"
+
+
+def _escape_ass_text(text: str) -> str:
+    """Escape ASS special characters to prevent parsing/rendering issues.
+
+    In ASS format, the following characters need escaping:
+    - { and } are used for override code blocks
+    - \\ is the escape character for ASS tags
+    - Unmatched quotes can confuse some renderers
+    """
+    # Escape backslashes first (so we don't double-escape our own escapes)
+    text = text.replace("\\", "\\\\")
+    # Escape curly braces
+    text = text.replace("{", "\\{").replace("}", "\\}")
+    # Replace smart/curly quotes with straight quotes for consistent rendering
+    text = text.replace("‘", "'").replace("’", "'")
+    text = text.replace("“", "\"").replace("”", "\"")
+    return text
 
 
 def _ass_color_with_alpha(html_color: str, alpha: float) -> str:

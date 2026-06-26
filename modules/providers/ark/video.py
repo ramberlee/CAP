@@ -7,6 +7,7 @@ Supports doubao-seedance models with:
 - Audio-conditioned generation when audio_url is provided
 """
 
+import math
 import logging
 import time
 from pathlib import Path
@@ -80,19 +81,20 @@ class ArkVideoProvider(VideoProvider):
             return "3:4"
         return "adaptive"
 
-    def _build_content(self, prompt: str, audio_url: str | None) -> list[dict]:
-        """Build the content array for the API request."""
+    def _build_content(self, prompt: str, audio_path: str | None) -> list[dict]:
+        """Build the content array for the API request.
+
+        Note: Ark's Agent Plan video API generates audio internally;
+        the local audio_path is not passed to the API.
+        """
         content = [{"type": "text", "text": prompt}]
-        # Note: Agent Plan video API supports image_url in content,
-        # but audio_url is not directly supported in the content array.
-        # Audio integration would need a different approach (pre-merged).
         return content
 
     def generate(
         self,
         prompt: str,
         filename: str,
-        audio_url: str | None = None,
+        audio_path: str | None = None,
         subtitles: str | None = None,
         keywords: list[str] | None = None,
         audio_duration: float | None = None,
@@ -103,15 +105,20 @@ class ArkVideoProvider(VideoProvider):
             return None
 
         ratio = self._parse_ratio()
-        content = self._build_content(prompt, audio_url)
+        content = self._build_content(prompt, audio_path)
 
-        # Duration: Seedance models only support 5s, regardless of audio
+        # Duration: Seedance-1.5-pro supports up to 12s; older seedance caps at 5s
         is_seedance = "seedance" in self.model.lower()
         if is_seedance:
-            api_duration = 5
-            logger.info(f"Ark video duration: 5s (Seedance cap)")
+            seedance_max = 12 if "1.5" in self.model.lower() else 5
+            if audio_duration:
+                # Use actual audio duration, capped at model max — avoids trailing silence
+                api_duration = min(math.ceil(audio_duration), seedance_max)
+            else:
+                api_duration = seedance_max
+            logger.info(f"Ark video duration: {api_duration}s (audio: {audio_duration or 'N/A':.1f}s, seedance cap: {seedance_max}s)")
         elif audio_duration:
-            api_duration = min(int(audio_duration), self.duration or 15)
+            api_duration = min(math.ceil(audio_duration), self.duration or 15)
             logger.info(f"Ark video duration: {api_duration}s (audio: {audio_duration:.1f}s)")
         else:
             api_duration = self.duration or 5
