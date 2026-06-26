@@ -101,6 +101,7 @@ class DashScopeVideoProvider(VideoProvider):
         keywords: list[str] | None = None,
         audio_duration: float | None = None,
         scene_timings: list[dict] | None = None,
+        **kwargs,
     ) -> str | None:
         if not self.api_key:
             logger.warning("DashScope API key not configured, skipping video generation")

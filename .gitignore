@@ -237,6 +237,7 @@ remotion/node_modules/*
 remotion/chrome/*
 remotion/chrome-win64/*
 remotion/public/*
+remotion/out/*
 chrome*
 .codegraph/*
 .reasonix/*

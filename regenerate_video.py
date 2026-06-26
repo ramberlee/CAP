@@ -27,16 +27,7 @@ from modules._audio_utils import (
     trim_audio,
 )
 from modules.providers.remotion.video import RemotionVideoProvider
-from modules.providers.mimo.speech import MiMoSpeechProvider
-from modules.providers.ark.speech import ArkSpeechProvider
-
-
-def _create_speech_provider(config: AppConfig):
-    """Select speech provider by config key: mimo (default), ark."""
-    provider_name = config.generation.text_provider
-    if provider_name == "ark":
-        return ArkSpeechProvider(config.ark)
-    return MiMoSpeechProvider(config.mimo)
+from modules.providers.factory import ProviderFactory
 
 
 def _synthesize_speech(
@@ -168,7 +159,7 @@ def regenerate_video(seq: str, config: dict) -> bool:
     output_media = Path('output/douyin/media')
     output_media.mkdir(parents=True, exist_ok=True)
 
-    speech_provider = _create_speech_provider(config)
+    speech_provider = ProviderFactory(config).create_speech_provider()
     audio_path, total_dur, scene_timings = _generate_tts_from_audio_segments(
         segments, seq, output_media, speech_provider, voice_direction,
     )
@@ -209,12 +200,12 @@ def regenerate_video(seq: str, config: dict) -> bool:
     video_path = remotion_provider.generate(
         prompt=narration,
         filename=filename,
-        audio_url=str(dst_audio),
+        audio_path=str(dst_audio),
         subtitles=narration,
         keywords=None,
         audio_duration=total_dur,
-        plan=plan,
         scene_timings=scene_timings,
+        plan=plan,
     )
 
     if not video_path:

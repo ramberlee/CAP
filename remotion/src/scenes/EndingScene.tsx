@@ -1,78 +1,93 @@
-import React from "react";
-import { useCurrentFrame, useVideoConfig } from "remotion";
-import { SceneWrapper } from "./SceneWrapper";
-import { ThemePalette, AnimationStyle } from "../types";
-import { computeStyle, getStaggerDelay, easeOutCubic } from "../components/VisualInterpreter";
+import React from 'react';
+import { useCurrentFrame } from 'remotion';
+import { SceneWrapper } from './SceneWrapper';
+import { AnimatedText } from '../components/AnimatedText';
+import { FONT_SIZE, FONT_WEIGHT } from '../styles/typography';
+import { SceneComponentProps } from './types';
 
-interface EndingSceneProps {
-  theme: ThemePalette; text: string; duration: number;
-  animation?: AnimationStyle; icon?: string;
-  visualStyle?: string; mood?: string; layoutHint?: string;
-  imagePath?: string;
-}
-
-const EndingScene: React.FC<EndingSceneProps> = ({
-  theme, text, icon, animation = "fade_out",
-  visualStyle, mood, layoutHint, imagePath,
-}) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+/**
+ * EndingScene — Closing slide.
+ * Thank you message + key takeaways summary + CTA button.
+ */
+export const EndingScene: React.FC<SceneComponentProps> = ({ scene, theme, frame, fps }) => {
+  const items = scene.items || scene.lines || [];
+  const title = scene.title || '感谢观看';
+  const body = scene.body || '';
   const t = frame / fps;
-  const cs = computeStyle(visualStyle, mood, layoutHint, theme);
-  const accent = cs.accentOverride || theme.accent;
-  const lines = text.split("\n").filter(Boolean);
-  const avatarPulse = 1 + 0.03 * Math.sin(t * 2);
 
   return (
-    <SceneWrapper theme={theme} animation={animation}
-      visualStyle={visualStyle} mood={mood} layoutHint={layoutHint}
-      imagePath={imagePath}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: 40, width: "100%", height: "100%", justifyContent: "center" }}>
-        <div style={{ position: "relative", marginBottom: 10 }}>
-          <div style={{
-            position: "absolute", inset: cs.glowIntensity > 0.5 ? -16 : -12, borderRadius: "50%",
-            border: `${cs.glowIntensity > 0.5 ? 3 : 2}px solid ${accent}30`,
-            transform: `scale(${avatarPulse})`,
-          }} />
-          <div style={{
-            width: cs.glowIntensity > 0.5 ? 90 : 80,
-            height: cs.glowIntensity > 0.5 ? 90 : 80, borderRadius: "50%",
-            background: cs.glowIntensity > 0.3
-              ? `linear-gradient(135deg, ${accent}, ${theme.accentSecondary})`
-              : accent,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: icon ? 36 : 32, color: theme.background, fontWeight: 700,
-            boxShadow: `0 0 ${cs.glowIntensity * 40}px ${accent}50`,
-          }}>{icon || "AI"}</div>
-        </div>
+    <SceneWrapper
+      scene={scene}
+      theme={theme}
+      verticalAlign="center"
+      horizontalAlign="center"
+      overlayOpacity={0.5}
+    >
+      <div style={{ textAlign: 'center', maxWidth: 1400 }}>
+        {/* Thank you */}
+        <AnimatedText
+          text={title}
+          animation="scaleIn"
+          delay={0.2}
+          duration={0.5}
+          fontSize={FONT_SIZE.title}
+          fontWeight={FONT_WEIGHT.bold}
+          color={theme.text}
+          style={{ display: 'block', marginBottom: 40 }}
+        />
 
-        {lines.map((line, i) => {
-          const delay = getStaggerDelay(i, lines.length, cs.entrancePattern, 0.2);
-          const lineT = easeOutCubic(Math.max(0, Math.min(1, (t - delay) * 2)));
-          return (
-            <div key={i} style={{
-              fontSize: i === 0 ? cs.fontSize * 0.9 : cs.fontSize * 0.6,
-              fontWeight: i === 0 ? cs.fontWeight : Math.max(300, cs.fontWeight - 300),
-              color: i === 0 ? (cs.textColorOverride || theme.text) : theme.textSecondary,
-              textAlign: "center", lineHeight: cs.lineHeight,
-              maxWidth: "80%", opacity: lineT,
-              transform: `translateY(${(1 - lineT) * 15}px)`,
-              letterSpacing: cs.letterSpacing,
-            }}>{line}</div>
-          );
-        })}
+        {/* Key takeaways */}
+        {items.map((item, i) => (
+          <AnimatedText
+            key={i}
+            text={item}
+            animation="slideUp"
+            delay={0.6 + i * 0.3}
+            duration={0.4}
+            fontSize={FONT_SIZE.body}
+            fontWeight={FONT_WEIGHT.regular}
+            color={theme.textSecondary}
+            lineHeight={1.8}
+            style={{ display: 'block' }}
+          />
+        ))}
 
-        <div style={{
-          marginTop: 20, padding: "14px 40px", borderRadius: 50,
-          background: `linear-gradient(135deg, ${accent}, ${theme.accentSecondary})`,
-          fontSize: 26, fontWeight: 600, color: theme.background,
-          opacity: Math.min(1, (t - 0.5) * 3),
-          boxShadow: `0 0 ${cs.glowIntensity * 35}px ${accent}40`,
-          transform: `scale(${1 + 0.02 * Math.sin(t * 3)})`,
-        }}>关注获取更多</div>
+        {/* Body */}
+        {body && (
+          <AnimatedText
+            text={body}
+            animation="fade"
+            delay={0.8 + items.length * 0.3}
+            duration={0.4}
+            fontSize={FONT_SIZE.body}
+            fontWeight={FONT_WEIGHT.medium}
+            color={theme.accent}
+            style={{ display: 'block', marginTop: 24 }}
+          />
+        )}
+
+        {/* CTA Button — driven by scene.subtitle, falls back to a default */}
+        {scene.subtitle && (
+          <AnimatedText
+            text={scene.subtitle}
+            animation="scaleIn"
+            delay={1.2 + items.length * 0.3}
+            duration={0.5}
+            fontSize={FONT_SIZE.button}
+            fontWeight={FONT_WEIGHT.semibold}
+            color="#FFFFFF"
+            style={{
+              display: 'inline-block',
+              marginTop: 40,
+              padding: '14px 40px',
+              background: `linear-gradient(135deg, ${theme.accent}, ${theme.accentSecondary})`,
+              borderRadius: 50,
+              boxShadow: `0 4px 20px ${theme.accent}44`,
+              letterSpacing: 2,
+            }}
+          />
+        )}
       </div>
     </SceneWrapper>
   );
 };
-
-export default EndingScene;

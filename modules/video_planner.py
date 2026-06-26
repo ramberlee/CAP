@@ -25,6 +25,24 @@ from modules.config_model import AppConfig
 logger = logging.getLogger(__name__)
 
 
+def _create_planner_client(config: AppConfig) -> tuple[OpenAI | None, str]:
+    """Create an OpenAI client and model for the planner based on the configured text provider.
+
+    Shared by AudioPlanner and VideoPlanner to avoid duplicate client creation logic.
+    Returns (client, model_name).
+    """
+    text_provider = config.generation.text_provider
+    if text_provider == "ark":
+        api_key = config.ark.api_key
+        base_url = config.ark.base_url
+        model = config.ark.effective_planner_model
+    else:
+        api_key = config.mimo.api_key
+        base_url = config.mimo.base_url
+        model = config.mimo.effective_planner_model
+    return OpenAI(api_key=api_key, base_url=base_url) if api_key else None, model
+
+
 # ═══════════════════════════════════════════════════════════════
 #  AudioPlanner — generates narration + voice direction
 # ═══════════════════════════════════════════════════════════════
@@ -111,18 +129,7 @@ class AudioPlanner:
     """Generates audio narration scripts from douyin source material using LLM."""
 
     def __init__(self, config: AppConfig):
-        text_provider = config.generation.text_provider
-
-        if text_provider == "ark":
-            api_key = config.ark.api_key
-            base_url = config.ark.base_url
-            self.model = config.ark.effective_planner_model
-        else:
-            api_key = config.mimo.api_key
-            base_url = config.mimo.base_url
-            self.model = config.mimo.effective_planner_model
-
-        self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
+        self.client, self.model = _create_planner_client(config)
 
     def plan(
         self,
@@ -256,27 +263,23 @@ VIDEO_PLANNER_SEED_PROMPT = """你是一个专业的短视频视觉导演。根�
    场景越短，画面切换越频繁，观众越不容易划走。
 6. **场景数 ≥ 音频段数 × 2**：宁可多切画面，不要让观众盯着同一画面超过 4 秒
 
-## 场景类型详解
+## 场景类型详解（10种PPT风格）
 
-### 文字类
-- **hook**：开场强钩子，大字居中+冲击动画(zoom_in)。显示关键词而非完整句子。2-3s
-- **title**：标题大字居中，动画 scale_in。2-3s
-- **text_sequence**：文字逐行滑入(fade_in)，适合逐步揭示信息。2-3s
-- **highlight**：放大强调+光效(pulse)，适合核心观点/金句。2-3s
-- **bullet_points**：编号列表(slide_up)，适合要点罗列。2-3s
-- **ending**：结尾引导关注(fade_out)。2-3s
+### 文字/结构类
+- **title**：封面页。大标题居中+背景图+副标题+装饰线。动画 scaleIn。3-5s
+- **bullet**：要点列表页。标题+逐条要点从右侧滑入。当前旁白对应的要点高亮。动画 slideRight。3-5s
+- **section_title**：章节标题页。大字章节名+简洁渐变背景+进度指示。动画 slideUp。2-4s
+- **highlight**：强调页。居中大字/大数字+辉光脉冲效果。纯色背景，文字突出。动画 scaleIn。2-4s
+- **ending**：结尾页。总结要点+感谢+CTA引导关注。动画 fade。3-5s
 
-### 数据可视化类（优先使用！）
-- **data_card**：大数字卡片。visual_label="推理能力"，visual_value=10，visual_unit="倍提升"，visual_trend="up"。
-  数字从0动画到目标值，带趋势箭头。动画 scale_in。2-3s
-- **comparison**：分屏对比。visual_left="旧方案: 5小时"，visual_right="新方案: 3分钟"。
-  左右对比动画 slide_up。2-3s
-- **keyword_burst**：关键词炸裂弹入。visual_keywords=["更快", "更智能", "更便宜"]。
-  词汇从不同方向弹入屏幕。动画 zoom_in。2-3s
+### 数据/引用类
+- **data_card**：数据图表页。标题+大数字滚动动画+SVG柱状图/饼图+说明文字。动画 scaleIn。3-5s
+- **quote**：引用页。大号引用文字+左侧竖线装饰+背景图片虚化+出处。打字机效果。3-5s
+- **comparison**：对比页。左右分栏+各自标题/要点+中间VS分割线。动画 slideUp。3-5s
+- **timeline**：时间线页。横向时间轴SVG从左到右绘制+节点依次弹出+日期/标题。动画 fade。4-6s
 
 ### 图文类
-- **image_text**：上半部配图+下半部关键词/数据。2-3s
-- **progress_bar**：进度/趋势条。visual_progress=85（表示85%），visual_label="效率提升"。2-3s
+- **image_caption**：图文页。图片占左(40%)+文字说明在右(60%)。图片圆角+阴影。动画 slideUp。3-5s
 
 ## 输出格式
 输出纯 JSON：
@@ -286,47 +289,60 @@ VIDEO_PLANNER_SEED_PROMPT = """你是一个专业的短视频视觉导演。根�
   "theme": "dark_tech | light_clean | vibrant | minimal | news",
   "scenes": [
     {
-      "type": "hook",
-      "text": "屏幕上显示的短文本（≠口播内容）",
-      "icon": "⚡",
-      "visual_style": "explosive neon, bold",
+      "type": "title",
+      "title": "GPT-5 重磅发布",
+      "subtitle": "科技前沿 · 深度解读",
+      "visual_style": "bold digital",
       "mood": "urgent",
       "layout_hint": "spotlight center",
-      "duration": 2.5,
-      "animation": "zoom_in"
+      "duration": 3.5,
+      "animation": "scaleIn"
+    },
+    {
+      "type": "highlight",
+      "highlight": "推理能力提升",
+      "highlightValue": "10x",
+      "body": "相比上一代模型",
+      "visual_style": "bold",
+      "mood": "inspiring",
+      "layout_hint": "spotlight center",
+      "duration": 3.0,
+      "animation": "scaleIn"
     },
     {
       "type": "data_card",
-      "visual_label": "推理能力提升",
-      "visual_value": 10,
-      "visual_unit": "倍",
-      "visual_trend": "up",
-      "icon": "📊",
-      "visual_style": "clean digital, calm",
+      "title": "核心性能对比",
+      "dataPoints": [
+        {"label": "GPT-4", "value": 78, "unit": "%"},
+        {"label": "GPT-5", "value": 95, "unit": "%"},
+        {"label": "竞品", "value": 82, "unit": "%"}
+      ],
+      "visual_style": "clean digital",
       "mood": "serious",
       "layout_hint": "spotlight center",
-      "duration": 2.5,
-      "animation": "scale_in"
+      "duration": 3.5,
+      "animation": "scaleIn"
     },
     {
-      "type": "keyword_burst",
-      "visual_keywords": ["更快", "更智能", "更便宜"],
-      "icon": "✨",
-      "visual_style": "energetic, vibrant",
+      "type": "bullet",
+      "title": "核心优势",
+      "items": ["推理能力提升10倍", "复杂任务准确率95%", "支持多步推理链"],
+      "visual_style": "clean",
       "mood": "inspiring",
-      "layout_hint": "wide spread",
-      "duration": 3.0,
-      "animation": "zoom_in"
+      "layout_hint": "left aligned",
+      "duration": 4.0,
+      "animation": "slideRight"
     },
     {
       "type": "ending",
-      "text": "关注我\\n获取更多 AI 资讯",
-      "icon": "👋",
-      "visual_style": "warm elegant, hopeful",
+      "title": "感谢观看",
+      "items": ["GPT-5 推理能力提升10倍", "2024年Q3正式发布", "开启AI新纪元"],
+      "subtitle": "关注我们 · 获取更多",
+      "visual_style": "warm elegant",
       "mood": "hopeful",
       "layout_hint": "spotlight center",
-      "duration": 2.5,
-      "animation": "fade_out"
+      "duration": 3.5,
+      "animation": "fade"
     }
   ]
 }
@@ -344,15 +360,15 @@ VIDEO_PLANNER_SEED_PROMPT = """你是一个专业的短视频视觉导演。根�
 - 约 30-40% 使用数据可视化类型（data_card / comparison / keyword_burst / progress_bar）
 
 ## 图标 icon
-- hook/title：🤖📡⚡🔥🎯
+- title：🤖📡⚡🔥🎯
+- bullet：📋✅🔑📝
+- section_title：📂📑📌
 - data_card：📊📈💹🔢
+- quote：💬📜✍️
 - comparison：⚖️🔄📉📋
-- keyword_burst：✨💥🎯🔑
-- text_sequence：💡📖🔍
-- highlight：🧠💎🚀
-- bullet_points：✅📋🔑
-- image_text：🖼️📸🌐
-- progress_bar：⏳📶📊
+- timeline：📅⏳📆
+- highlight：🧠💎🚀💡
+- image_caption：🖼️📸🌐
 - ending：👋❤️🔔💬
 
 ## 主题 theme
@@ -389,10 +405,10 @@ spotlight center | left aligned | split left-right | stacked cards | timeline le
   "title": "GPT-5 重磅发布",
   "theme": "dark_tech",
   "scenes": [
-    { "type": "hook", "text": "GPT-5", "icon": "⚡", "visual_style": "explosive neon, bold", "mood": "urgent", "layout_hint": "spotlight center", "duration": 2.4, "animation": "zoom_in" },
-    { "type": "data_card", "visual_label": "推理能力", "visual_value": 10, "visual_unit": "倍提升", "visual_trend": "up", "icon": "📊", "visual_style": "clean digital, calm", "mood": "serious", "layout_hint": "spotlight center", "duration": 3.4, "animation": "scale_in" },
-    { "type": "keyword_burst", "visual_keywords": ["速度↑", "成本↓", "更智能"], "icon": "✨", "visual_style": "energetic, vibrant", "mood": "inspiring", "layout_hint": "wide spread", "duration": 2.2, "animation": "zoom_in" },
-    { "type": "ending", "text": "关注我\\n第一时间了解 AI 动态", "icon": "👋", "visual_style": "warm elegant, hopeful", "mood": "hopeful", "layout_hint": "spotlight center", "duration": 2.0, "animation": "fade_out" }
+    { "type": "title", "title": "GPT-5 重磅发布", "subtitle": "AI 新纪元", "duration": 3.0, "animation": "scaleIn" },
+    { "type": "highlight", "highlight": "推理能力提升", "highlightValue": "10x", "body": "相比上一代模型", "duration": 3.0, "animation": "scaleIn" },
+    { "type": "bullet", "title": "核心优势", "items": ["速度更快", "成本更低", "更智能"], "duration": 3.5, "animation": "slideRight" },
+    { "type": "ending", "title": "感谢观看", "items": ["GPT-5 推理提升10倍", "关注获取更多AI资讯"], "subtitle": "关注我们 · 获取更多", "duration": 3.0, "animation": "fade" }
   ]
 }
 """
@@ -409,144 +425,42 @@ VIDEO_PLANNER_USER_PROMPT_TEMPLATE = """根据参考素材和音频时间戳，�
 
 == 要求 ==
 1. **画面文字不得与口播重复**——口播说完整句子，画面只显示关键词/数据/对比
-2. 第一个 scene 必须是 hook 类型，动画 zoom_in
-3. 最后 scene 是 ending，引导关注
-4. 优先使用 data_card / comparison / keyword_burst 让画面有数据感和冲击力
-5. 场景类型多样化：至少包含 hook、1 个数据可视化类型、ending
-6. 每个场景必须设置 visual_style、mood、layout_hint
-7. 适当使用 image_text 场景（约占 20%）
+2. 第一个 scene 必须是 title 类型
+3. 最后 scene 是 ending 类型，引导关注
+4. 场景类型多样化：至少包含 title、bullet、ending，中间穿插 data_card/highlight/comparison
+5. 每个场景必须设置 title、duration、animation
+6. 适当使用 image_caption 场景（约占 20%，需要设置 imageQuery 搜索关键词）
 8. **场景拆分（最重要！）**：每个场景最长不超过 4 秒。如果一段音频有 7-8 秒，必须拆成 2-3 个不同类型的场景。
    例如：一段 8 秒的音频可以拆成 → keyword_burst(3s) + highlight(2.5s) + data_card(2.5s)
    场景总数应该是音频段数的 2-3 倍。所有场景的 duration 总和必须等于总音频时长。
 9. 场景之间的 duration 之和必须精确等于总音频时长，不要有多余或缺失的时间
+10. 可用场景类型（10种）：title, bullet, section_title, data_card, quote, comparison, timeline, highlight, image_caption, ending
+11. 可用动画：fade, slideUp, slideRight, scaleIn, typewriter, none
+12. 场景数据字段说明：
+    - title/title: 场景标题
+    - subtitle: 副标题/标签
+    - items[]: 列表项（bullet/ending 用）
+    - body: 正文段落
+    - highlight: 强调文字（highlight 用）
+    - highlightValue: 强调数值（highlight 用）
+    - quote/quoteAuthor: 引用+出处（quote 用）
+    - dataPoints[]: {label, value, unit, color}（data_card 用）
+    - leftTitle/leftItems[]/rightTitle/rightItems[]: 对比（comparison 用）
+    - timelineItems[]: {date, title, description}（timeline 用）
+    - imageQuery: 图片搜索关键词（image_caption 用）
 
 请输出 JSON 构图计划。"""
-
-# ── Prompt-generator: creates custom system prompts per content ──
-
-VIDEO_PLANNER_META_PROMPT = """你是一个世界级的 prompt 工程师，专精于为视频 AI 导演编写系统提示词。
-
-你的任务：根据给定的内容素材和音频时间戳，编写一份**定制化的视频导演系统提示词**。
-
-## 你的输出将被用作另一个 LLM 的 system prompt
-那个 LLM 会读取你的提示词 + 用户素材，输出一个 JSON 构图计划。所以你的提示词必须：
-1. 清晰定义角色和任务
-2. 根据素材的具体主题、情绪、数据，给出**针对性的视觉建议**
-3. 推荐最适合这个内容的场景类型组合
-4. 禁止泛泛而谈——要具体到"这个内容适合用什么颜色、什么动画、什么对比手法"
-
-## 必须包含的内容
-1. **角色定义**：你是短视频视觉导演
-2. **核心原则**：画面 ≠ 口播的复读机——画面用关键词/数据/对比，音频说完整句子
-3. **可用场景类型**（全部列出，带简短说明）：
-   - hook / title / text_sequence / highlight / bullet_points / image_text / ending
-   - data_card：大数字卡片(visual_label/visual_value/visual_unit/visual_trend)
-   - comparison：分屏对比(visual_left/visual_right)
-   - keyword_burst：关键词弹入(visual_keywords[])
-   - progress_bar：进度条(visual_progress/visual_label)
-4. **针对本内容的场景推荐**：看完素材后，推荐 2-3 个最出彩的视觉手法
-5. **场景拆分规则（最重要！）**：每个场景最长不超过 4 秒。长音频段必须拆成 2-3 个不同类型的短场景。
-   场景总数 = 音频段数 × 2-3 倍。所有场景 duration 之和 = 总音频时长。
-6. **可用 theme**：dark_tech / light_clean / vibrant / minimal / news — 推荐最适合的一个
-7. **visual_style 关键词库**（英文）：cyberpunk, neon, holographic, digital, matrix, luxurious, cinematic, elegant, premium, explosive, energetic, dynamic, bold, impactful, minimal, zen, calm, clean, soft, playful, creative, vibrant, pop
-8. **mood 选项**：urgent | calm | inspiring | mysterious | serious | hopeful | dramatic
-9. **layout_hint 选项**：spotlight center | left aligned | split left-right | stacked cards | timeline left | wide spread
-10. **animation 选项**：fade_in | scale_in | slide_up | typewriter | pulse | zoom_in | fade_out
-11. **输出格式**：纯 JSON，包含 title/theme/scenes[] 数组
-12. **一个完整的示例 JSON 输出**（用与当前素材类似的内容作为示例）
-
-## 风格
-- 用中文写提示词
-- 语气专业但有创造力
-- 约 800-1500 字
-- 直接输出提示词正文，不要加"这是提示词"之类的废话
-
-## 素材信息
-{content_brief}
-
-请输出定制化的视频导演系统提示词。"""
-
 
 class VideoPlanner:
     """Generates visual composition plans — purely visual, separate from audio.
 
-    Uses a two-step LLM process:
-      1. Meta-LLM generates a custom system prompt tailored to the content.
-      2. That custom prompt drives the actual plan generation.
+    Uses a single LLM call with a fixed seed prompt (VIDEO_PLANNER_SEED_PROMPT).
+    Audio timestamps are applied after plan generation for precise sync.
+    Falls back to a template-based plan when LLM is unavailable.
     """
 
     def __init__(self, config: AppConfig):
-        text_provider = config.generation.text_provider
-
-        if text_provider == "ark":
-            api_key = config.ark.api_key
-            base_url = config.ark.base_url
-            self.model = config.ark.effective_planner_model
-        else:
-            api_key = config.mimo.api_key
-            base_url = config.mimo.base_url
-            self.model = config.mimo.effective_planner_model
-
-        self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
-
-    def _generate_custom_system_prompt(
-        self,
-        script: str,
-        title: str = "",
-        tags: Optional[list[str]] = None,
-        audio_timeline: str = "",
-    ) -> str | None:
-        """Generate a custom system prompt tailored to the specific content.
-
-        Calls the LLM with VIDEO_PLANNER_META_PROMPT, which includes the
-        seed knowledge (VIDEO_PLANNER_SEED_PROMPT) plus the content brief.
-        The LLM returns a bespoke system prompt for plan generation.
-
-        Returns the custom prompt string, or None on failure.
-        """
-        # Build a compact content brief
-        tag_str = ", ".join(tags[:8]) if tags else "无"
-        brief_parts = [
-            f"标题：{title or '无'}",
-            f"素材内容：{script[:600]}",
-            f"标签：{tag_str}",
-            f"音频时间分配：\n{audio_timeline}" if audio_timeline else "",
-        ]
-        content_brief = "\n".join(p for p in brief_parts if p)
-
-        user_prompt = VIDEO_PLANNER_META_PROMPT.format(content_brief=content_brief)
-
-        try:
-            logger.info("Generating custom system prompt for video planner...")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=2048,
-                temperature=0.8,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "你是一个世界级的 prompt 工程师。"
-                            "根据素材信息编写定制化的视频导演系统提示词。\n\n"
-                            "## 领域知识参考（种子提示词）\n"
-                            + VIDEO_PLANNER_SEED_PROMPT
-                        ),
-                    },
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-
-            custom_prompt = response.choices[0].message.content.strip()
-            if not custom_prompt:
-                logger.warning("LLM returned empty custom prompt")
-                return None
-
-            logger.debug(f"Custom prompt preview: {custom_prompt[:120]}...")
-            return custom_prompt
-
-        except Exception as e:
-            logger.warning(f"Custom system prompt generation failed: {e}")
-            return None
+        self.client, self.model = _create_planner_client(config)
 
     def plan(
         self,
@@ -558,9 +472,8 @@ class VideoPlanner:
     ) -> Optional[dict]:
         """Generate a visual composition plan.
 
-        Two-step process:
-          1. LLM generates a custom system prompt tailored to this content.
-          2. That custom prompt is used to generate the actual plan JSON.
+        Uses VIDEO_PLANNER_SEED_PROMPT as the system prompt. On failure,
+        retries once with the same seed prompt (to handle transient LLM errors).
 
         Args:
             script: The douyin source script text.
@@ -578,10 +491,6 @@ class VideoPlanner:
 
         audio_timeline = _format_audio_timeline(audio_timings)
 
-        # Use seed prompt directly for reliability
-        custom_system_prompt = VIDEO_PLANNER_SEED_PROMPT
-
-        # ── Step 2: Generate plan with custom prompt (retry once with seed prompt on failure) ──
         format_kwargs = dict(
             title=title or "无标题",
             script=script[:800],
@@ -590,9 +499,10 @@ class VideoPlanner:
         )
         user_prompt = VIDEO_PLANNER_USER_PROMPT_TEMPLATE.format(**format_kwargs)
 
+        # Retry once on failure (transient LLM errors)
         prompts_to_try = [
-            ("custom prompt", custom_system_prompt),
-            ("seed prompt (retry)", VIDEO_PLANNER_SEED_PROMPT),
+            ("first attempt", VIDEO_PLANNER_SEED_PROMPT),
+            ("retry", VIDEO_PLANNER_SEED_PROMPT),
         ]
 
         text = ""
@@ -651,23 +561,21 @@ class VideoPlanner:
             return self._fallback_plan(script, title, total_duration, audio_timings)
 
     _VALID_TYPES = {
-        "hook", "title", "text_sequence", "highlight", "bullet_points",
-        "image_text", "ending", "data_card", "comparison", "keyword_burst",
-        "progress_bar",
+        "title", "bullet", "section_title", "data_card", "quote",
+        "comparison", "timeline", "highlight", "image_caption", "ending",
     }
-    _VALID_ANIMATIONS = {"fade_in", "scale_in", "slide_up", "typewriter", "pulse", "zoom_in", "fade_out"}
+    _VALID_ANIMATIONS = {"fade", "slideUp", "slideRight", "scaleIn", "typewriter", "none"}
     _DEFAULT_ANIMATIONS = {
-        "hook": "zoom_in",
-        "title": "scale_in",
-        "text_sequence": "fade_in",
-        "highlight": "pulse",
-        "bullet_points": "slide_up",
-        "image_text": "fade_in",
-        "ending": "fade_out",
-        "data_card": "scale_in",
-        "comparison": "slide_up",
-        "keyword_burst": "zoom_in",
-        "progress_bar": "scale_in",
+        "title": "scaleIn",
+        "bullet": "slideRight",
+        "section_title": "slideUp",
+        "data_card": "scaleIn",
+        "quote": "typewriter",
+        "comparison": "slideUp",
+        "timeline": "fade",
+        "highlight": "scaleIn",
+        "image_caption": "slideUp",
+        "ending": "fade",
     }
 
     def _validate_plan(self, plan: dict) -> None:
@@ -684,23 +592,26 @@ class VideoPlanner:
                 {"type": "title", "text": plan["title"], "duration": 3, "animation": "scale_in"},
                 {"type": "ending", "text": "关注我们", "duration": 2, "animation": "fade_out"},
             ]
-        for scene in plan["scenes"]:
+        for i, scene in enumerate(plan["scenes"]):
             stype = scene.get("type", "")
             if stype not in self._VALID_TYPES:
-                scene["type"] = "text_sequence"
-            if scene == plan["scenes"][0] and scene["type"] not in ("hook", "title"):
-                scene["type"] = "hook"
-                scene["animation"] = "zoom_in"
+                scene["type"] = "highlight"
+            if i == 0 and scene["type"] not in ("title", "bullet", "section_title", "highlight"):
+                scene["type"] = "title"
+                scene["animation"] = "scaleIn"
             anim = scene.get("animation", "")
             if anim not in self._VALID_ANIMATIONS:
                 scene["animation"] = self._DEFAULT_ANIMATIONS.get(scene["type"], "fade_in")
             if "duration" not in scene or scene["duration"] <= 0:
                 scene["duration"] = 3.0
-            for key in ("text", "lines", "items"):
+            for key in ("title", "subtitle", "body", "highlight", "highlightValue", "quote", "quoteAuthor",
+                        "leftTitle", "rightTitle"):
                 if key in scene:
                     if isinstance(scene[key], str):
                         scene[key] = _re.sub(r"\[VIDEO:.*?]", "", scene[key]).strip()
-                    elif isinstance(scene[key], list):
+            for key in ("items", "leftItems", "rightItems", "lines"):
+                if key in scene:
+                    if isinstance(scene[key], list):
                         scene[key] = [_re.sub(r"\[VIDEO:.*?]", "", t).strip() for t in scene[key]]
 
         # Enforce scene diversity: no single type should exceed 40% of scenes
@@ -710,9 +621,9 @@ class VideoPlanner:
             type_counts = Counter(s["type"] for s in scenes)
             dominant_type, dominant_count = type_counts.most_common(1)[0]
             max_allowed = max(2, int(len(scenes) * 0.4))
-            if dominant_count > max_allowed and dominant_type not in ("hook", "ending"):
+            if dominant_count > max_allowed and dominant_type not in ("title", "ending"):
                 # Convert excess scenes to varied types
-                alt_types = ["highlight", "keyword_burst", "data_card", "bullet_points", "comparison"]
+                alt_types = ["bullet", "highlight", "data_card", "quote", "comparison"]
                 convert_count = dominant_count - max_allowed
                 converted = 0
                 for i, scene in enumerate(scenes):
@@ -721,21 +632,25 @@ class VideoPlanner:
                     if scene["type"] == dominant_type and i > 0 and i < len(scenes) - 1:
                         new_type = alt_types[converted % len(alt_types)]
                         scene["type"] = new_type
-                        scene["animation"] = self._DEFAULT_ANIMATIONS.get(new_type, "fade_in")
+                        scene["animation"] = self._DEFAULT_ANIMATIONS.get(new_type, "fade")
                         # Add required fields for the new type
-                        if new_type == "keyword_burst" and "visual_keywords" not in scene:
-                            text = scene.get("text", "")
-                            scene["visual_keywords"] = [text[:8]] if text else ["AI"]
-                        elif new_type == "data_card" and "visual_label" not in scene:
-                            scene["visual_label"] = scene.get("text", "")[:10] or "数据"
-                            scene["visual_value"] = 80
-                            scene["visual_unit"] = "%"
-                            scene["visual_trend"] = "up"
-                        elif new_type == "comparison" and "visual_left" not in scene:
-                            scene["visual_left"] = scene.get("text", "")[:12] or "旧方案"
-                            scene["visual_right"] = "新方案"
-                        elif new_type == "bullet_points" and "items" not in scene:
-                            scene["items"] = [scene.get("text", "")[:15]] or ["要点"]
+                        if new_type == "highlight" and "highlight" not in scene:
+                            scene["highlight"] = scene.get("title", "") or scene.get("text", "亮点")
+                            scene["highlightValue"] = "✨"
+                        elif new_type == "data_card" and "dataPoints" not in scene:
+                            scene["title"] = scene.get("title", "") or "数据"
+                            scene["dataPoints"] = [
+                                {"label": "指标", "value": 80, "unit": "%"},
+                            ]
+                        elif new_type == "quote" and "quote" not in scene:
+                            scene["quote"] = scene.get("text", "")[:30] or "引人深思的引用"
+                            scene["quoteAuthor"] = "佚名"
+                        elif new_type == "bullet" and "items" not in scene:
+                            text = scene.get("text", scene.get("title", ""))[:20]
+                            scene["items"] = [text] if text else ["要点"]
+                        elif new_type == "comparison" and "leftTitle" not in scene:
+                            scene["leftTitle"] = "传统方式"
+                            scene["rightTitle"] = "全新方案"
                         converted += 1
 
     def _fallback_plan(
@@ -766,28 +681,22 @@ class VideoPlanner:
         hook_text = sentences[0][:18] if sentences else (title or "AI 资讯")
         scenes = [
             {
-                "type": "hook",
-                "text": hook_text,
+                "type": "title",
+                "title": hook_text,
                 "duration": min(3.0, per_scene * 1.2),
-                "animation": "zoom_in",
-                "icon": "🤖",
-                "visual_style": "explosive neon",
-                "mood": "urgent",
-                "layout_hint": "spotlight center",
+                "animation": "scaleIn",
             }
         ]
 
         remaining = sentences[1:] if len(sentences) > 1 else sentences
         # Scene type rotation for diversity
         type_rotation = [
-            ("data_card", "scale_in"),
-            ("keyword_burst", "zoom_in"),
-            ("highlight", "pulse"),
-            ("text_sequence", "fade_in"),
-            ("comparison", "slide_up"),
-            ("bullet_points", "slide_up"),
-            ("keyword_burst", "zoom_in"),
-            ("highlight", "pulse"),
+            ("data_card", "scaleIn"),
+            ("highlight", "scaleIn"),
+            ("bullet", "slideRight"),
+            ("quote", "typewriter"),
+            ("comparison", "slideUp"),
+            ("highlight", "scaleIn"),
         ]
 
         for i, sent in enumerate(remaining):
@@ -798,39 +707,30 @@ class VideoPlanner:
                 "type": scene_type,
                 "duration": round(per_scene, 2),
                 "animation": anim,
-                "visual_style": "digital clean",
-                "mood": "inspiring",
-                "layout_hint": "spotlight center",
             }
 
             if scene_type == "data_card":
                 num_match = _re.search(r"(\d+)\s*(倍|%|万|亿)", text)
-                scene["visual_label"] = text[:10]
-                scene["visual_value"] = int(num_match.group(1)) if num_match else 80
-                scene["visual_unit"] = num_match.group(2) if num_match else "%"
-                scene["visual_trend"] = "up"
-                scene["icon"] = "📊"
-            elif scene_type == "keyword_burst":
-                # Extract keywords from the sentence
-                words = [w.strip() for w in _re.split(r"[，,、\s]+", text) if len(w.strip()) >= 2]
-                scene["visual_keywords"] = words[:3] if words else [text[:8]]
-                scene["icon"] = "⚡"
+                scene["title"] = text[:10]
+                scene["dataPoints"] = [
+                    {"label": text[:8], "value": int(num_match.group(1)) if num_match else 80,
+                     "unit": num_match.group(2) if num_match else "%"}
+                ]
             elif scene_type == "highlight":
-                scene["text"] = text
-                scene["icon"] = "💡"
-            elif scene_type == "text_sequence":
-                # Split long text into lines
-                lines = [text[j:j+12] for j in range(0, len(text), 12)]
-                scene["lines"] = lines[:3]
-                scene["icon"] = "📝"
+                scene["highlight"] = text[:20]
+                scene["highlightValue"] = "✨"
+            elif scene_type == "bullet":
+                words = [w.strip() for w in _re.split(r"[，,、\s]+", text) if len(w.strip()) >= 2]
+                scene["title"] = title[:10] or "要点"
+                scene["items"] = words[:3] if words else [text[:15]]
+            elif scene_type == "quote":
+                scene["quote"] = text[:30]
+                scene["quoteAuthor"] = "佚名"
             elif scene_type == "comparison":
-                scene["visual_left"] = text[:12]
-                scene["visual_right"] = "新方案"
-                scene["icon"] = "⚖️"
-            elif scene_type == "bullet_points":
-                items = [w.strip() for w in _re.split(r"[，,、；;]", text) if len(w.strip()) >= 2]
-                scene["items"] = items[:3] if items else [text[:15]]
-                scene["icon"] = "📋"
+                scene["leftTitle"] = text[:10]
+                scene["leftItems"] = ["传统方案"]
+                scene["rightTitle"] = "新方案"
+                scene["rightItems"] = ["全新升级"]
 
             scenes.append(scene)
 
@@ -845,9 +745,10 @@ class VideoPlanner:
 
         scenes.append({
             "type": "ending",
-            "text": ending_text,
+            "title": ending_text,
+            "items": [ending_text[:15]],
             "duration": min(3.0, per_scene),
-            "animation": "fade_out",
+            "animation": "fade",
         })
 
         plan = {"title": title or "AI 资讯", "theme": "dark_tech", "scenes": scenes}

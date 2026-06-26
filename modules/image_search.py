@@ -208,8 +208,8 @@ class ImageSearcher:
         results = []
         for i in range(count):
             seed_i = seed + i
-            # 1080x1920 portrait for shorts format
-            w, h = 1080, 1920
+            # 1920x1080 landscape for douyin horizontal format
+            w, h = 1920, 1080
             url = f"https://picsum.photos/seed/{seed_i}/{w}/{h}"
             results.append(ImageResult(
                 url=url,

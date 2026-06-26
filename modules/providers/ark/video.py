@@ -58,7 +58,7 @@ class ArkVideoProvider(VideoProvider):
         Returns "9:16" for portrait, "16:9" for landscape, or "adaptive".
         """
         size_str = self.video_size.replace("*", "x")
-        width, height = 720, 1280  # Default to 9:16 portrait for Douyin
+        width, height = 1920, 1080  # Default to 16:9 landscape
 
         if "x" in size_str:
             parts = size_str.split("x")
@@ -99,6 +99,7 @@ class ArkVideoProvider(VideoProvider):
         keywords: list[str] | None = None,
         audio_duration: float | None = None,
         scene_timings: list[dict] | None = None,
+        **kwargs,
     ) -> str | None:
         if not self.api_key:
             logger.warning("Ark API key not configured, skipping video generation")

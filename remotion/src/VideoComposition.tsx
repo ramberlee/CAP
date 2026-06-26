@@ -1,240 +1,95 @@
-import React from "react";
-import { Sequence } from "remotion";
-import { getTheme } from "./themes";
-import {
-  TitleScene,
-  TextSequenceScene,
-  HighlightScene,
-  ImageTextScene,
-  BulletPointsScene,
-  EndingScene,
-  DataCardScene,
-  ComparisonScene,
-  KeywordBurstScene,
-} from "./scenes";
-import { CompositionPlan, Scene } from "./types";
+import React from 'react';
+import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
+import { CompositionPlan, Scene, SceneType } from './types';
+import { getTheme, ThemePalette } from './themes';
+import { TitleScene } from './scenes/TitleScene';
+import { BulletScene } from './scenes/BulletScene';
+import { SectionTitleScene } from './scenes/SectionTitleScene';
+import { DataScene } from './scenes/DataScene';
+import { QuoteScene } from './scenes/QuoteScene';
+import { ComparisonScene } from './scenes/ComparisonScene';
+import { TimelineScene } from './scenes/TimelineScene';
+import { HighlightScene } from './scenes/HighlightScene';
+import { ImageCaptionScene } from './scenes/ImageCaptionScene';
+import { EndingScene } from './scenes/EndingScene';
 
-/**
- * VideoComposition renders a full video from a CompositionPlan.
- * Props are Record<string, unknown> as required by Remotion's Composition type.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const VideoComposition: React.FC<any> = (props) => {
-  const plan = (props.plan as CompositionPlan) || (props.defaultProps?.plan as CompositionPlan | undefined);
+// Scene component registry
+type SceneComponent = React.FC<{
+  scene: Scene;
+  theme: ThemePalette;
+  frame: number;
+  fps: number;
+  startFrame: number;
+}>;
 
-  if (!plan || !plan.scenes) {
-    return (
-      <div
-        style={{
-          width: 1080,
-          height: 1920,
-          backgroundColor: "#000",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#fff",
-          fontSize: 48,
-          fontFamily: "sans-serif",
-        }}
-      >
-        No composition plan provided
-      </div>
-    );
+const sceneRegistry: Record<SceneType, SceneComponent> = {
+  [SceneType.Title]: TitleScene,
+  [SceneType.Bullet]: BulletScene,
+  [SceneType.SectionTitle]: SectionTitleScene,
+  [SceneType.DataCard]: DataScene,
+  [SceneType.Quote]: QuoteScene,
+  [SceneType.Comparison]: ComparisonScene,
+  [SceneType.Timeline]: TimelineScene,
+  [SceneType.Highlight]: HighlightScene,
+  [SceneType.ImageCaption]: ImageCaptionScene,
+  [SceneType.Ending]: EndingScene,
+};
+
+const SceneRenderer: React.FC<{
+  scene: Scene;
+  theme: ThemePalette;
+  startFrame: number;
+}> = ({ scene, theme, startFrame }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const Component = sceneRegistry[scene.type];
+
+  if (!Component) {
+    return <AbsoluteFill style={{ backgroundColor: theme.background }} />;
   }
 
-  const theme = getTheme(plan.theme);
-  let currentFrame = 0;
-
   return (
-    <div
-      style={{
-        width: 1080,
-        height: 1920,
-        overflow: "hidden",
-        fontFamily:
-          '"Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif',
-        WebkitFontSmoothing: "antialiased",
-        MozOsxFontSmoothing: "grayscale",
-        textRendering: "optimizeLegibility",
-      }}
-    >
-      {plan.scenes.map((scene: Scene, index: number) => {
-        const sceneDurationInFrames = Math.round(scene.duration * 30);
-        const startFrame = currentFrame;
-        currentFrame += sceneDurationInFrames;
-
-        return (
-          <Sequence
-            key={index}
-            from={startFrame}
-            durationInFrames={sceneDurationInFrames}
-          >
-            <SceneRenderer scene={scene} theme={theme} />
-          </Sequence>
-        );
-      })}
-    </div>
+    <Component
+      scene={scene}
+      theme={theme}
+      frame={frame}
+      fps={fps}
+      startFrame={startFrame}
+    />
   );
 };
 
-/** Route a single scene to its corresponding component */
-const SceneRenderer: React.FC<{
-  scene: Scene;
-  theme: ReturnType<typeof getTheme>;
-}> = ({ scene, theme }) => {
-  switch (scene.type) {
-    case "title":
-      return (
-        <TitleScene
-          theme={theme}
-          text={scene.text || ""}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-          imagePath={scene.imagePath}
-        />
-      );
+const VideoComposition: React.FC<{ plan?: CompositionPlan }> = ({
+  plan = { theme: 'dark_tech', scenes: [] },
+}) => {
+  const theme = getTheme(plan.theme);
+  const { fps } = useVideoConfig();
 
-    case "text_sequence":
-      return (
-        <TextSequenceScene
-          theme={theme}
-          lines={scene.lines || [scene.text || ""]}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-          imagePath={scene.imagePath}
-        />
-      );
+  let cumulativeFrames = 0;
+  const sceneEntries = (plan.scenes || []).map((scene) => {
+    const durationFrames = Math.round(scene.duration * fps);
+    const entry = { scene, startFrame: cumulativeFrames, durationFrames };
+    cumulativeFrames += durationFrames;
+    return entry;
+  });
 
-    case "highlight":
-      return (
-        <HighlightScene
-          theme={theme}
-          text={scene.text || ""}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-          imagePath={scene.imagePath}
-        />
-      );
-
-    case "image_text":
-      return (
-        <ImageTextScene
-          theme={theme}
-          text={scene.text || ""}
-          imagePath={scene.imagePath}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-        />
-      );
-
-    case "bullet_points":
-      return (
-        <BulletPointsScene
-          theme={theme}
-          items={scene.items || [scene.text || ""]}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-          imagePath={scene.imagePath}
-        />
-      );
-
-    case "data_card":
-      return (
-        <DataCardScene
-          theme={theme}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-          visual_label={scene.visual_label}
-          visual_value={scene.visual_value}
-          visual_unit={scene.visual_unit}
-          visual_trend={scene.visual_trend}
-          imagePath={scene.imagePath}
-        />
-      );
-
-    case "comparison":
-      return (
-        <ComparisonScene
-          theme={theme}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-          visual_left={scene.visual_left}
-          visual_right={scene.visual_right}
-          imagePath={scene.imagePath}
-        />
-      );
-
-    case "keyword_burst":
-      return (
-        <KeywordBurstScene
-          theme={theme}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-          visual_keywords={scene.visual_keywords}
-          imagePath={scene.imagePath}
-        />
-      );
-
-    case "ending":
-      return (
-        <EndingScene
-          theme={theme}
-          text={scene.text || ""}
-          duration={scene.duration}
-          animation={scene.animation}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-          imagePath={scene.imagePath}
-        />
-      );
-
-    default:
-      return (
-        <TitleScene
-          theme={theme}
-          text={scene.text || "Unknown scene type"}
-          duration={scene.duration}
-          icon={scene.icon}
-          visualStyle={scene.visual_style}
-          mood={scene.mood}
-          layoutHint={scene.layout_hint}
-        />
-      );
-  }
+  return (
+    <AbsoluteFill style={{ backgroundColor: theme.background }}>
+      {sceneEntries.map((entry, index) => (
+        <Sequence
+          key={`scene-${index}`}
+          from={entry.startFrame}
+          durationInFrames={entry.durationFrames}
+        >
+          <SceneRenderer
+            scene={entry.scene}
+            theme={theme}
+            startFrame={entry.startFrame}
+          />
+        </Sequence>
+      ))}
+    </AbsoluteFill>
+  );
 };
 
 export default VideoComposition;

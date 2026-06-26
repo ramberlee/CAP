@@ -4,9 +4,9 @@ Dependencies are injected via constructor. Use ContentGenerator.from_config()
 for the default production wiring (called from main.py).
 
 The former imager.py, vgen.py, and tts.py facades have been absorbed into
-this module as private implementation — provider dispatch is handled by
-_create_image_provider, _create_video_provider, and _create_speech_provider.
-Audio utility functions live in modules._audio_utils.
+this module — provider dispatch is handled by ProviderFactory
+(modules/providers/factory.py). Audio utility functions live in
+modules._audio_utils.
 """
 
 import json
@@ -27,15 +27,7 @@ from modules._audio_utils import (
     trim_audio,
 )
 from modules.providers import ImageProvider, VideoProvider, SpeechProvider
-from modules.providers.dashscope.image import DashScopeImageProvider
-from modules.providers.agnes.image import AgnesImageProvider
-from modules.providers.ark.image import ArkImageProvider
-from modules.providers.dashscope.video import DashScopeVideoProvider
-from modules.providers.agnes.video import AgnesVideoProvider
-from modules.providers.ark.video import ArkVideoProvider
-from modules.providers.remotion.video import RemotionVideoProvider
-from modules.providers.ark.speech import ArkSpeechProvider
-from modules.providers.mimo.speech import MiMoSpeechProvider
+from modules.providers.factory import ProviderFactory
 from modules.providers._subtitle_builder import SubtitleConfig, burn_subtitles
 from modules.providers._ffmpeg_utils import (
     concat_videos as _concat_videos,
@@ -225,38 +217,6 @@ def get_enabled_platforms(config: AppConfig) -> list[str]:
     return enabled
 
 
-# ── Provider factory helpers (lifted from the former imager/vgen/tts facades) ──
-
-def _create_image_provider(config: AppConfig) -> ImageProvider:
-    """Select image provider by config key: dashscope (default), agnes, ark."""
-    provider_name = config.generation.image_provider
-    if provider_name == "agnes":
-        return AgnesImageProvider(config.agnes)
-    elif provider_name == "ark":
-        return ArkImageProvider(config.ark)
-    return DashScopeImageProvider(config.dashscope)
-
-
-def _create_video_provider(config: AppConfig) -> VideoProvider:
-    """Select video provider by config key: dashscope (default), agnes, ark, remotion."""
-    provider_name = config.generation.video_provider
-    if provider_name == "agnes":
-        return AgnesVideoProvider(config.agnes, generation=config.generation)
-    elif provider_name == "ark":
-        return ArkVideoProvider(config.ark, generation=config.generation)
-    elif provider_name == "remotion":
-        return RemotionVideoProvider(config)
-    return DashScopeVideoProvider(config.dashscope, generation=config.generation)
-
-
-def _create_speech_provider(config: AppConfig) -> SpeechProvider:
-    """Select speech provider by config key: mimo (default), ark."""
-    provider_name = config.generation.text_provider
-    if provider_name == "ark":
-        return ArkSpeechProvider(config.ark)
-    return MiMoSpeechProvider(config.mimo)
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 
 class ContentGenerator:
@@ -317,45 +277,26 @@ class ContentGenerator:
     def _resolve_video_config(config: AppConfig) -> tuple[str, str, int]:
         """Resolve video model, size, and max duration from the active provider's config.
 
-        Previously hardcoded to dashscope — now reads from the correct section.
+        Delegates to ProviderFactory.resolve_video_config().
         """
-        provider = config.generation.video_provider
-        if provider == "ark":
-            return (config.ark.video_model, config.ark.video_size, config.ark.video_duration)
-        elif provider == "agnes":
-            size = f"{config.agnes.video_width}*{config.agnes.video_height}"
-            # Agnes duration is frame-based, estimate ~5s default
-            return (config.agnes.video_model, size, 15)
-        elif provider == "remotion":
-            return ("remotion", "1920*1080", 60)
-        else:
-            return (config.dashscope.video_model, config.dashscope.video_size, config.dashscope.video_duration)
+        return ProviderFactory(config).resolve_video_config()
 
     @classmethod
     def from_config(cls, db: Database, config: AppConfig) -> "ContentGenerator":
         """Create a fully-wired ContentGenerator from a typed AppConfig.
 
-        This is the production entry-point (used by main.py). It reads the
-        config, selects providers, and injects everything.
+        This is the production entry-point (used by main.py). It uses
+        ProviderFactory to select providers and resolve config.
         """
-        text_provider = config.generation.text_provider
+        factory = ProviderFactory(config)
 
         # ── LLM client + model ──
-        if text_provider == "ark":
-            api_key = config.ark.api_key
-            base_url = config.ark.base_url
-            model = config.ark.model
-        else:
-            api_key = config.mimo.api_key
-            base_url = config.mimo.base_url
-            model = config.mimo.model
-
-        client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
+        client, model = factory.create_llm_client()
 
         # ── Providers ──
-        image_provider = _create_image_provider(config) if config.generation.auto_image else None
-        video_provider = _create_video_provider(config) if config.generation.auto_video else None
-        speech_provider = _create_speech_provider(config) if config.generation.auto_video else None
+        image_provider = factory.create_image_provider() if config.generation.auto_image else None
+        video_provider = factory.create_video_provider() if config.generation.auto_video else None
+        speech_provider = factory.create_speech_provider() if config.generation.auto_video else None
 
         store = ContentStore(
             output_dir=config.output_dir,

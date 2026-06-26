@@ -42,10 +42,10 @@ class AgnesVideoProvider(VideoProvider):
     def __init__(self, config: AgnesConfig, generation: GenerationConfig | None = None):
         self.api_key = config.api_key
         self.model = config.video_model or DEFAULT_VIDEO_MODEL
-        self.width = config.video_width
-        self.height = config.video_height
-        self.default_num_frames = config.video_num_frames
-        self.default_frame_rate = config.video_frame_rate
+        size_parts = config.video_size.split("*")
+        self.width = int(size_parts[0]) if len(size_parts) >= 1 else 1152
+        self.height = int(size_parts[1]) if len(size_parts) >= 2 else 768
+        self.duration = config.video_duration
         self.media_dir = Path(config.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
         self.sub_config = SubtitleConfig.from_config(generation) if generation else SubtitleConfig()
@@ -82,12 +82,13 @@ class AgnesVideoProvider(VideoProvider):
         keywords: list[str] | None = None,
         audio_duration: float | None = None,
         scene_timings: list[dict] | None = None,
+        **kwargs,
     ) -> str | None:
         if not self.api_key:
             logger.warning("Agnes API key not configured, skipping video generation")
             return None
 
-        num_frames, frame_rate, _ = self._pick_frame_config(audio_duration)
+        num_frames, frame_rate, _ = self._pick_frame_config(audio_duration or self.duration)
 
         data: dict = {
             "model": self.model,

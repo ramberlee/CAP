@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 
 from .client import RemotionClient
-from modules.video_planner import AudioPlanner, VideoPlanner
+from modules.video_planner import VideoPlanner
 
 from .. import VideoProvider
 from .._subtitle_builder import SubtitleConfig
@@ -29,14 +29,14 @@ class RemotionVideoProvider(VideoProvider):
     def __init__(self, config: AppConfig):
         self.config = config
         self.remotion_client = RemotionClient(config)
-        self.audio_planner = AudioPlanner(config)
         self.planner = VideoPlanner(config)
         self.sub_config = SubtitleConfig.from_config(config.generation)
 
         self.media_dir = Path(config.dashscope.media_dir)
         self.media_dir.mkdir(parents=True, exist_ok=True)
 
-        self.duration = config.dashscope.video_duration or 15
+        self.video_size = config.remotion.video_size
+        self.duration = config.remotion.video_duration or 30
 
     def generate(
         self,
@@ -47,6 +47,7 @@ class RemotionVideoProvider(VideoProvider):
         keywords: list[str] | None = None,
         audio_duration: float | None = None,
         scene_timings: list[dict] | None = None,
+        plan: dict | None = None,
     ) -> str | None:
         """Generate a Remotion video. `prompt` is the oral script text."""
         return self._generate_remotion(
@@ -56,6 +57,7 @@ class RemotionVideoProvider(VideoProvider):
             keywords=keywords,
             audio_duration=audio_duration,
             scene_timings=scene_timings,
+            plan=plan,
         )
 
     def _resolve_scene_images(self, plan: dict, filename: str) -> None:
@@ -83,32 +85,37 @@ class RemotionVideoProvider(VideoProvider):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, directory=str(image_dir), **kwargs)
 
-        http_server = None
-        http_port = None
+        http_server: HTTPServer | None = None
+        http_port: int | None = None
         base_name = Path(filename).stem
 
-        for i, scene in image_scenes:
-            query = scene["image_query"].strip()
-            logger.info(f"Searching image for scene {i} ({scene.get('type')}): '{query}'")
-            img_filename = f"{base_name}_scene_{i}"
-            path = searcher.search_and_download(query, img_filename)
-            if path:
-                if http_server is None:
-                    for port in range(9876, 9900):
-                        try:
-                            http_server = HTTPServer(("127.0.0.1", port), _ImageHandler)
-                            http_port = port
-                            thread = threading.Thread(target=http_server.serve_forever, daemon=True)
-                            thread.start()
-                            logger.info(f"Started image HTTP server on port {http_port}")
-                            break
-                        except OSError:
-                            continue
-                http_url = f"http://127.0.0.1:{http_port}/{path.name}"
-                scene["imagePath"] = http_url
-                logger.info(f"Image resolved for scene {i}: {http_url}")
-            else:
-                logger.warning(f"Failed to find image for scene {i} query '{query}'")
+        try:
+            for i, scene in image_scenes:
+                query = scene["image_query"].strip()
+                logger.info(f"Searching image for scene {i} ({scene.get('type')}): '{query}'")
+                img_filename = f"{base_name}_scene_{i}"
+                path = searcher.search_and_download(query, img_filename)
+                if path:
+                    if http_server is None:
+                        for port in range(9876, 9900):
+                            try:
+                                http_server = HTTPServer(("127.0.0.1", port), _ImageHandler)
+                                http_port = port
+                                thread = threading.Thread(target=http_server.serve_forever, daemon=True)
+                                thread.start()
+                                logger.info(f"Started image HTTP server on port {http_port}")
+                                break
+                            except OSError:
+                                continue
+                    http_url = f"http://127.0.0.1:{http_port}/{path.name}"
+                    scene["imageUrl"] = http_url
+                    logger.info(f"Image resolved for scene {i}: {http_url}")
+                else:
+                    logger.warning(f"Failed to find image for scene {i} query '{query}'")
+        finally:
+            if http_server is not None:
+                http_server.shutdown()
+                logger.info("Image HTTP server shut down")
 
     def _generate_remotion(
         self,
@@ -118,24 +125,33 @@ class RemotionVideoProvider(VideoProvider):
         keywords: list[str] | None = None,
         audio_duration: float | None = None,
         scene_timings: list[dict] | None = None,
+        plan: dict | None = None,
     ) -> str | None:
-        """Internal Remotion rendering logic. `scene_timings` kept for interface consistency."""
+        """Internal Remotion rendering logic.
+
+        When `plan` is provided (pre-generated with audio timings), uses it directly.
+        Otherwise generates a new plan internally (legacy path for backward compat).
+        """
 
         duration = audio_duration or self.duration
-        plan = self.planner.plan(
-            script=script,
-            title=filename.replace(".mp4", "").replace("_", " ").title(),
-            tags=keywords,
-            total_duration=duration,
-        )
-        if not plan:
-            logger.error("Failed to generate video composition plan")
-            return None
+
+        # Use external plan if provided (avoids double LLM call)
+        if plan is None:
+            plan = self.planner.plan(
+                script=script,
+                title=filename.replace(".mp4", "").replace("_", " ").title(),
+                tags=keywords,
+                total_duration=duration,
+            )
+            if not plan:
+                logger.error("Failed to generate video composition plan")
+                return None
+        else:
+            logger.info("Using externally-provided composition plan (with audio timings)")
 
         plan_duration = sum(s.get("duration", 3) for s in plan.get("scenes", []))
 
-        gen_config = self.config.get("generation", {})
-        if gen_config.get("auto_image", False):
+        if self.config.generation.auto_image:
             self._resolve_scene_images(plan, filename)
 
         if audio_duration and plan_duration < audio_duration:

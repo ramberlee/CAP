@@ -25,6 +25,9 @@ class RemotionClient:
     def __init__(self, config: AppConfig):
         self.project_dir = Path(config.remotion.project_dir)
         self.fps = config.remotion.fps
+        size_parts = config.remotion.video_size.split("*")
+        self.video_width = int(size_parts[0]) if len(size_parts) >= 1 else 1920
+        self.video_height = int(size_parts[1]) if len(size_parts) >= 2 else 1080
         self.browser_executable = config.remotion.browser_executable
         # Resolve relative paths to absolute (paths in config are relative to project root)
         if self.browser_executable and not os.path.isabs(self.browser_executable):
@@ -192,8 +195,8 @@ const RemotionRoot: React.FC = () => {{
         component={{VideoComposition}}
         durationInFrames={{{total_frames}}}
         fps={{{self.fps}}}
-        width={{1080}}
-        height={{1920}}
+        width={{{self.video_width}}}
+        height={{{self.video_height}}}
         defaultProps={{defaultPlan}}
       />
     </>

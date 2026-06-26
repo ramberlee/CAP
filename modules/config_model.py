@@ -52,6 +52,7 @@ class MiMoConfig(DictCompatMixin):
     tts_model: str = "mimo-v2.5-tts"
     tts_voice: str = "Chloe"
     planner_model: Optional[str] = None
+    media_dir: str = "media"
 
     @property
     def effective_planner_model(self) -> str:
@@ -75,7 +76,9 @@ class DashScopeConfig(DictCompatMixin):
 
 class RemotionConfig(DictCompatMixin):
     project_dir: str = "remotion"
-    fps: int = 30
+    fps: int = 24
+    video_size: str = "1920*1080"
+    video_duration: int = 30
     browser_executable: Optional[str] = None
     chrome_flags: str = ""
 
@@ -86,10 +89,8 @@ class AgnesConfig(DictCompatMixin):
     video_model: str = "agnes-video-v2.0"
     media_dir: str = "media"
     # Video generation parameters
-    video_width: int = 1152
-    video_height: int = 768
-    video_num_frames: int = 121
-    video_frame_rate: int = 24
+    video_size: str = "1152*768"
+    video_duration: int = 5
 
 
 class ArkConfig(DictCompatMixin):
@@ -99,7 +100,7 @@ class ArkConfig(DictCompatMixin):
     image_model: str = "doubao-seedream-2.0-t2i-250529"
     image_size: str = "1472*1104"
     video_model: str = "doubao-seedance-1.5-pro-250611"
-    video_size: str = "1280*720"
+    video_size: str = "1920*1080"
     video_duration: int = 12
     tts_model: str = "doubao-seed-tts-2.0"
     tts_resource_id: str = "seed-tts-2.0"
