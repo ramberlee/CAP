@@ -1,0 +1,153 @@
+{
+  "durationInFrames": 780,
+  "plan": {
+    "title": "术：方法论的力量",
+    "theme": "dark_glass",
+    "scenes": [
+    {
+      "layout": "title_card",
+      "duration": 4.0,
+      "titleCard": {
+        "title": "术",
+        "subtitle": "方法论 · 工具 · 实践",
+        "englishLabel": "THE ART OF METHOD"
+      },
+      "sceneSubtitle": "掌握方法，事半功倍"
+    },
+    {
+      "layout": "tech_multi_panel",
+      "duration": 7.0,
+      "chapterBadge": "01 认知",
+      "englishLabel": "COGNITION",
+      "techMultiPanel": {
+        "title": "什么是「术」",
+        "leftPanel": {
+          "title": "三要素",
+          "items": [
+            { "text": "方法 — 可复制的路径", "state": "completed", "badge": { "text": "核心", "variant": "orange" } },
+            { "text": "工具 — 放大能力的杠杆", "state": "active", "badge": { "text": "关键", "variant": "cyan" } },
+            { "text": "实践 — 验证与迭代", "state": "idle", "badge": { "text": "基础", "variant": "green" } },
+            { "text": "反馈 — 持续优化闭环", "state": "idle" },
+            { "text": "沉淀 — 形成可复用资产", "state": "idle" }
+          ],
+          "progress": { "current": 2, "total": 5 }
+        },
+        "centerPanel": {
+          "title": "术的本质",
+          "subtitle": "从知道到做到",
+          "body": "「术」不是简单的技巧堆砌，而是一套经过验证的、可重复执行的方法论。它将复杂问题拆解为可操作的步骤，让普通人也能稳定产出高质量的结果。",
+          "glow": true,
+          "progressBar": [
+            { "label": "认知 35%", "color": "#FF6B35", "value": 35 },
+            { "label": "方法 40%", "color": "#FFA502", "value": 40 },
+            { "label": "执行 25%", "color": "#2ED573", "value": 25 }
+          ]
+        },
+        "rightPanel": {
+          "title": "实践案例",
+          "items": [
+            { "name": "prompt工程.md", "badge": { "text": "已验证", "variant": "green" } },
+            { "name": "代码模板.yml", "badge": { "text": "使用中", "variant": "cyan" } },
+            { "name": "工作流.spec", "badge": { "text": "待优化", "variant": "orange" } }
+          ],
+          "pagination": { "current": 0, "total": 3 }
+        },
+        "sceneSubtitle": "方法论是可复制的成功"
+      }
+    },
+    {
+      "layout": "connected_cards",
+      "duration": 6.0,
+      "chapterBadge": "02 路径",
+      "englishLabel": "PATHWAY",
+      "connectedCards": {
+        "title": "三步掌握「术」",
+        "cards": [
+          {
+            "num": "01",
+            "title": "观察与拆解",
+            "items": ["找到标杆案例", "拆解关键步骤", "识别核心变量"],
+            "state": "highlighted",
+            "accentColor": "orange"
+          },
+          {
+            "num": "02",
+            "title": "模板化与复用",
+            "items": ["抽象通用模板", "填充具体参数", "快速验证效果"],
+            "state": "normal",
+            "accentColor": "cyan"
+          },
+          {
+            "num": "03",
+            "title": "迭代与沉淀",
+            "items": ["收集反馈数据", "优化模板参数", "形成知识资产"],
+            "state": "dimmed",
+            "accentColor": "green"
+          }
+        ],
+        "centerText": "从模仿到创造的进化之路",
+        "sceneSubtitle": "标准化是规模化的前提"
+      }
+    },
+    {
+      "layout": "stack_highlight",
+      "duration": 6.0,
+      "chapterBadge": "03 洞察",
+      "englishLabel": "INSIGHT",
+      "stackHighlight": {
+        "title": "术的层次",
+        "leftItems": [
+          { "text": "手工操作 — 靠经验和直觉", "highlighted": false, "state": "completed", "badge": { "text": "初级", "variant": "neutral" } },
+          { "text": "流程规范 — 靠制度和标准", "highlighted": false, "state": "completed", "badge": { "text": "中级", "variant": "cyan" } },
+          { "text": "工具自动化 — 靠系统和AI", "highlighted": true, "state": "active", "badge": { "text": "高级", "variant": "orange" } },
+          { "text": "智能决策 — 靠数据和模型", "highlighted": false, "state": "idle", "badge": { "text": "专家", "variant": "green" } },
+          { "text": "自适应系统 — 靠反馈和进化", "highlighted": false, "state": "idle", "badge": { "text": "大师", "variant": "neutral" } }
+        ],
+        "rightCard": {
+          "title": "进化方向",
+          "subtitle": "从人驱动到系统驱动",
+          "body": "每一次「术」的升级，都是将人的注意力从重复劳动中解放出来。手工 → 模板 → 自动化 → 智能，这条路径的终点是让人专注于创造性思考。",
+          "pills": ["观察", "抽象", "模板", "自动化", "智能"]
+        },
+        "sceneSubtitle": "让系统做重复的事，让人做创造的事"
+      }
+    },
+    {
+      "layout": "split_compare",
+      "duration": 5.5,
+      "englishLabel": "COMPARISON",
+      "splitCompare": {
+        "title": "有术 vs 无术",
+        "leftTitle": "❌ 没有方法论",
+        "leftItems": [
+          { "text": "每次从零开始", "icon": "🔄" },
+          { "text": "结果不可预测", "icon": "🎲" },
+          { "text": "经验无法积累", "icon": "📉" },
+          { "text": "团队协作低效", "icon": "😤" }
+        ],
+        "rightHeader": "✅ 掌握方法论",
+        "rightHeaderVariant": "green",
+        "barSegments": [
+          { "label": "效率提升", "color": "#2ED573", "value": 85 },
+          { "label": "质量稳定", "color": "#FFA502", "value": 70 },
+          { "label": "可复制性", "color": "#FF6B35", "value": 90 }
+        ],
+        "barTotal": 100,
+        "barInlineLabel": "提升幅度",
+        "bottomText": "方法论让成功从偶然变为必然",
+        "sceneSubtitle": "从个人能力到组织能力的跃迁"
+      }
+    },
+    {
+      "layout": "title_card",
+      "duration": 4.0,
+      "titleCard": {
+        "title": "术以载道",
+        "subtitle": "方法是道的载体，道是方法的灵魂",
+        "englishLabel": "METHOD CARRIES WISDOM"
+      },
+      "sceneSubtitle": "关注我，每天分享方法论干货！"
+    }
+  ]
+  }
+}

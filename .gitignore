@@ -238,6 +238,8 @@ remotion/chrome/*
 remotion/chrome-win64/*
 remotion/public/*
 remotion/out/*
+remotion/test-inputs/*
+remotion/samples/*
 chrome*
 .codegraph/*
 .reasonix/*

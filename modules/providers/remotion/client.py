@@ -145,15 +145,30 @@ class RemotionClient:
         total_plan_duration = sum(s.get("duration", 3) for s in scenes)
         # Use plan_duration if provided (includes audio extension), otherwise use plan total
         effective_duration = plan_duration if plan_duration else total_plan_duration
-        # Add 1s buffer for transitions
-        total_frames = max(90, round((effective_duration + 1) * self.fps))
+        # Use audio duration as-is (scenes are pre-scaled to match),
+        # but add 0.5s for frame-rounding safety so audio never gets cut off
+        total_frames = max(90, round((effective_duration + 0.5) * self.fps))
 
         input_json_path = self.project_dir / "input.json"
+
+        # Prepare audio path for Remotion: copy to public/ so staticFile() can reach it
+        audio_public_rel = None
+        if audio_path and Path(audio_path).exists():
+            audio_filename = Path(audio_path).name
+            remotion_public_audio_dir = self.project_dir / "public" / "audio"
+            remotion_public_audio_dir.mkdir(parents=True, exist_ok=True)
+            dst_audio = remotion_public_audio_dir / audio_filename
+            shutil.copy2(audio_path, str(dst_audio))
+            audio_public_rel = f"audio/{audio_filename}"
+            logger.info(f"Audio copied to remotion public/: {dst_audio}")
+
         try:
             input_data = {
                 "plan": plan,
                 "durationInFrames": total_frames,
             }
+            if audio_public_rel:
+                input_data["plan"]["audioPath"] = audio_public_rel
             input_json_path.write_text(
                 json.dumps(input_data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -229,13 +244,16 @@ registerRoot(RemotionRoot);
             if self.chrome_flags:
                 cmd.extend(["--chrome-flags", self.chrome_flags])
 
+            # Scale timeout with frame count: 60s for bundling + ~0.2s per frame
+            render_timeout = max(300, 60 + int(total_frames * 0.2))
+            logger.info(f"Render timeout: {render_timeout}s ({total_frames} frames)")
             result = subprocess.run(
                 cmd,
                 cwd=str(self.project_dir),
                 capture_output=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=300,
+                timeout=render_timeout,
             )
 
             # Restore original Root.tsx
@@ -247,13 +265,16 @@ registerRoot(RemotionRoot);
                 root_tsx_backup.unlink(missing_ok=True)
 
             if result.returncode != 0:
-                logger.error(f"Remotion render failed:\n{result.stderr}")
+                logger.error(f"Remotion render failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
                 return None
 
             # Remotion CLI auto-adds .mp4 when no extension is specified
             output_with_ext = output_path.with_suffix(".mp4")
             if output_with_ext.exists():
                 logger.info(f"Video rendered: {output_with_ext}")
+                # Audio is embedded natively by Remotion's <Audio> component — no ffmpeg merge needed
+                if audio_public_rel:
+                    return str(output_with_ext)
                 return self._merge_audio(output_with_ext, audio_path, plan_duration)
 
             # Try alternative output path in remotion project directory
@@ -261,13 +282,16 @@ registerRoot(RemotionRoot);
             if alt_path.exists():
                 logger.info(f"Video rendered (alt path): {alt_path}")
                 shutil.copy2(str(alt_path), str(output_with_ext))
+                if audio_public_rel:
+                    return str(output_with_ext)
                 return self._merge_audio(output_with_ext, audio_path, plan_duration)
 
             logger.error("Remotion render completed but output not found")
             return None
 
         except subprocess.TimeoutExpired:
-            logger.error("Remotion render timed out (5 min)")
+            logger.error(f"Remotion render timed out ({render_timeout}s). "
+                         f"Consider reducing video duration or frames ({total_frames}).")
             return None
         except FileNotFoundError:
             logger.error(

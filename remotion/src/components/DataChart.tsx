@@ -35,7 +35,13 @@ export const BarChart: React.FC<BarChartProps> = ({
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const maxValue = Math.max(...data.map((d) => d.value), 1);
+  // Only treat numeric values as bar magnitudes. String values (e.g. "自动",
+  // "智能") are rendered as text labels above zero-height bars so the chart
+  // doesn't end up showing NaN.
+  const numericValues = data
+    .map((d) => Number(d.value))
+    .filter((v) => Number.isFinite(v));
+  const maxValue = numericValues.length > 0 ? Math.max(...numericValues, 1) : 1;
   const totalWidth = data.length * (barWidth + barGap) - barGap;
   const startX = (1920 - totalWidth) / 2;
 
@@ -45,7 +51,12 @@ export const BarChart: React.FC<BarChartProps> = ({
         const t = Math.max(0, frame / fps - delay - i * 0.15);
         const progress = Math.min(t / drawDuration, 1);
         const easeOut = 1 - Math.pow(1 - progress, 3);
-        const barH = easeOut * (point.value / maxValue) * barHeight;
+        const numeric = Number(point.value);
+        const ratio = Number.isFinite(numeric) ? numeric / maxValue : 0;
+        // Non-numeric values still get a small visible bar so the row doesn't
+        // collapse to nothing — it reads as a "data row" even when the LLM
+        // returns descriptive strings.
+        const barH = easeOut * (ratio > 0 ? ratio : 0.35) * barHeight;
         const x = startX + i * (barWidth + barGap);
         const y = barHeight - barH;
         const color = point.color || theme.accent;
@@ -202,7 +213,11 @@ export const AnimatedCounter: React.FC<{
   const t = Math.max(0, frame / fps - delay);
   const progress = Math.min(t / duration, 1);
   const easeOut = 1 - Math.pow(1 - progress, 3);
-  const displayValue = Math.round(easeOut * value);
+  // If value isn't a finite number (e.g. the LLM returned "自动"), fall back
+  // to plain text instead of producing NaN.
+  const numericValue = Number(value);
+  const isNumeric = Number.isFinite(numericValue);
+  const displayValue = isNumeric ? Math.round(easeOut * numericValue) : 0;
   const isComplete = progress >= 1;
 
   return (
@@ -218,7 +233,7 @@ export const AnimatedCounter: React.FC<{
         textShadow: isComplete ? `0 0 20px ${color}44` : undefined,
       }}
     >
-      {prefix}{displayValue.toLocaleString()}{unit}
+      {prefix}{isNumeric ? displayValue.toLocaleString() : String(value)}{unit}
     </span>
   );
 };

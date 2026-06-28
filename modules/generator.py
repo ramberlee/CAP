@@ -480,8 +480,10 @@ class ContentGenerator:
     # Multi-step generation for Douyin (angle → hook → body → ending)
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _llm_json(self, system_prompt: str, user_prompt: str, max_tokens: int = 1024) -> dict | None:
+    def _llm_json(self, system_prompt: str, user_prompt: str, max_tokens: int | None = None) -> dict | None:
         """Call LLM and parse JSON response. Returns parsed dict or None."""
+        if max_tokens is None:
+            max_tokens = self.gen_config.max_tokens
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -493,10 +495,21 @@ class ContentGenerator:
                 ],
             )
             text = response.choices[0].message.content
+
+            # Strip markdown code fences (```json ... ``` or ``` ... ```)
+            text = text.strip()
+            if text.startswith("```"):
+                first_nl = text.find("\n")
+                text = text[first_nl + 1:] if first_nl >= 0 else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+
             json_start = text.find("{")
             json_end = text.rfind("}") + 1
             if json_start == -1 or json_end == 0:
-                logger.error(f"No JSON found in LLM response")
+                logger.error(f"No JSON found in LLM response. "
+                             f"Response ({len(text)} chars): {text[:500]}")
                 return None
             return json.loads(text[json_start:json_end])
         except (json.JSONDecodeError, Exception) as e:
@@ -526,7 +539,7 @@ class ContentGenerator:
             topic=topic, category_name=category_name,
             category_angle_extra=angle_extra,
         )
-        angle_result = self._llm_json(system_prompt, angle_prompt, max_tokens=512)
+        angle_result = self._llm_json(system_prompt, angle_prompt, max_tokens=self.gen_config.max_tokens)
         if not angle_result:
             logger.warning("Step 1 (angle) failed, falling back to single-pass")
             return self._generate_douyin_single_pass_fallback(topic, category)
@@ -540,7 +553,7 @@ class ContentGenerator:
         hook_prompt = STEP_HOOK_PROMPT.format(
             topic=topic, core_argument=core_argument, emotional_tone=emotional_tone,
         )
-        hook_result = self._llm_json(system_prompt, hook_prompt, max_tokens=256)
+        hook_result = self._llm_json(system_prompt, hook_prompt, max_tokens=self.gen_config.max_tokens)
         if not hook_result:
             logger.warning("Step 2 (hook) failed, falling back to single-pass")
             return self._generate_douyin_single_pass_fallback(topic, category)
@@ -582,7 +595,7 @@ class ContentGenerator:
             category_ending_style=ending_style,
             category_title_style=title_style,
         )
-        ending_result = self._llm_json(system_prompt, ending_prompt, max_tokens=512)
+        ending_result = self._llm_json(system_prompt, ending_prompt, max_tokens=self.gen_config.max_tokens)
         if not ending_result:
             logger.warning("Step 4 (ending) failed, using fallback ending")
             ending_result = {

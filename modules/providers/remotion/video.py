@@ -154,12 +154,93 @@ class RemotionVideoProvider(VideoProvider):
         if self.config.generation.auto_image:
             self._resolve_scene_images(plan, filename)
 
-        if audio_duration and plan_duration < audio_duration:
-            gap = round(audio_duration - plan_duration, 2)
-            if plan.get("scenes"):
-                plan["scenes"][-1]["duration"] = round(plan["scenes"][-1]["duration"] + gap, 2)
-                plan_duration = audio_duration
-                logger.info(f"Extended last scene by {gap:.1f}s to match audio ({audio_duration:.1f}s)")
+        # Sync: extend/shrink scene durations to match audio exactly
+        if audio_duration:
+            scenes = plan.get("scenes", [])
+            # Per-scene max duration caps to avoid static/boring frames
+            CONTENT_MAX = 20.0   # content scenes: max 20s each
+            ENDING_MAX = 15.0    # final title card: max 15s
+            ABSOLUTE_MAX = 30.0  # hard ceiling after redistribution
+
+            def _scene_cap(s):
+                is_ending = (s.get("layout") == "title_card" and s is scenes[-1])
+                return ENDING_MAX if is_ending else CONTENT_MAX
+
+            # Step 1: hard-cap any oversized scenes before scaling
+            for s in scenes:
+                cap = _scene_cap(s)
+                if s.get("duration", 3) > cap:
+                    s["duration"] = cap
+
+            # Step 2: scale all scenes proportionally to match audio duration
+            current_total = sum(s.get("duration", 3) for s in scenes)
+            if current_total > 0:
+                ratio = audio_duration / current_total
+                for s in scenes:
+                    s["duration"] = round(s["duration"] * ratio, 2)
+
+            # Step 3: iteratively cap + redistribute until total ≈ audio_duration
+            for _iteration in range(10):
+                # Cap scenes that exceeded limits
+                overflow = 0
+                for s in scenes:
+                    cap = min(_scene_cap(s) * 1.5, ABSOLUTE_MAX)  # allow 50% over soft cap
+                    if s["duration"] > cap:
+                        overflow += s["duration"] - cap
+                        s["duration"] = cap
+
+                plan_duration = sum(s["duration"] for s in scenes)
+                deficit = audio_duration - plan_duration
+
+                if deficit < 0.5 or overflow < 0.1:
+                    break  # converged
+
+                # Distribute overflow to non-ending content scenes
+                content = [s for s in scenes
+                           if not (s.get("layout") == "title_card" and s is scenes[-1])]
+                if content:
+                    extra = overflow / len(content)
+                    for s in content:
+                        s["duration"] = round(s["duration"] + extra, 2)
+
+            # Step 4: iteratively merge shortest adjacent pairs until
+            # average scene duration hits a comfortable viewing pace (~12s)
+            TARGET_AVG = 12.0
+            target_count = max(5, round(audio_duration / TARGET_AVG))
+
+            while len(scenes) > target_count:
+                # Find shortest adjacent pair to merge (skip ending)
+                min_dur = float("inf")
+                min_idx = -1
+                for i in range(len(scenes) - 1):
+                    is_ending_pair = (
+                        scenes[i + 1].get("layout") == "title_card"
+                        and scenes[i + 1] is scenes[-1]
+                    )
+                    if is_ending_pair:
+                        continue
+                    pair_dur = scenes[i]["duration"] + scenes[i + 1]["duration"]
+                    if pair_dur < min_dur:
+                        min_dur = pair_dur
+                        min_idx = i
+
+                if min_idx < 0:
+                    break
+
+                # Merge scene[min_idx+1] into scene[min_idx]
+                scenes[min_idx]["duration"] = round(min_dur, 2)
+                if scenes[min_idx + 1].get("sceneSubtitle") and not scenes[min_idx].get("sceneSubtitle"):
+                    scenes[min_idx]["sceneSubtitle"] = scenes[min_idx + 1]["sceneSubtitle"]
+                scenes.pop(min_idx + 1)
+
+            plan["scenes"] = scenes
+
+            plan_duration = sum(s["duration"] for s in scenes)
+            logger.info(
+                f"Scenes synced to audio ({audio_duration:.1f}s): "
+                f"{len(scenes)} scenes, total={plan_duration:.1f}s, "
+                f"max scene={max(s['duration'] for s in scenes):.1f}s"
+            )
 
         return self.remotion_client.render(
             plan=plan,

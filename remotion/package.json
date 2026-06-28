@@ -1,11 +1,19 @@
 {
   "name": "cap-remotion",
-  "version": "1.0.0",
-  "description": "CAP video renderer using Remotion",
+  "version": "2.0.0",
+  "description": "CAP video renderer using Remotion - v3 Tech Edition",
   "scripts": {
-    "render": "remotion render src/Root.tsx out/video.mp4 --props=./input.json",
-    "render:with-props": "remotion render src/Root.tsx",
-    "studio": "remotion studio src/"
+    "studio": "remotion studio src/",
+    "dev": "remotion studio src/",
+    "render": "remotion render src/Root.tsx CAPVideo out/video.mp4 --props=./input.json --concurrency=6 --quality=80",
+    "render:fast": "remotion render src/Root.tsx CAPVideo out/video-fast.mp4 --props=./input.json --concurrency=8 --quality=70 --scale=0.75",
+    "render:preview": "remotion render src/Root.tsx CAPVideo out/preview.mp4 --props=./input.json --concurrency=8 --quality=60 --scale=0.5",
+    "render:v3": "remotion render src/Root.tsx CAPVideo out/v3-demo.mp4 --props=./input-v3-demo.json --concurrency=6 --quality=80",
+    "render:frame": "remotion still src/Root.tsx CAPVideo out/frame.png --props=./input.json --frame=30",
+    "render:range": "remotion render src/Root.tsx CAPVideo out/range.mp4 --props=./input.json --frames=0-120",
+    "render:scene": "node scripts/render-scene.js",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf out/* node_modules/.cache"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.0",

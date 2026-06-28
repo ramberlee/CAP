@@ -1,0 +1,1 @@
+/* Types shared by animation hooks */

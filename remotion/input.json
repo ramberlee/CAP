@@ -1,88 +1,128 @@
 {
   "plan": {
-    "title": "AI代理一键生成，替代80%工作",
-    "theme": "dark_tech",
+    "title": "动动嘴造3D网页！Swimio颠覆传统开发",
+    "theme": "dark_glass",
     "scenes": [
       {
-        "type": "hook",
-        "text": "AI代理",
-        "icon": "⚡",
-        "visual_style": "explosive neon, bold",
-        "mood": "urgent",
-        "layout_hint": "spotlight center",
-        "duration": 2.0,
-        "animation": "zoom_in"
+        "layout": "title_card",
+        "titleCard": {
+          "title": "动动嘴，生成3D网页",
+          "subtitle": "无需代码 | 一分钟交付"
+        },
+        "duration": 14.35,
+        "animation": "scaleIn",
+        "englishLabel": "3D WEBSITE WITH VOICE",
+        "sceneSubtitle": "建3D网页？现在动动嘴就能生成！"
       },
       {
-        "type": "data_card",
-        "visual_label": "自动化替代",
-        "visual_value": 80,
-        "visual_unit": "% 重复工作",
-        "visual_trend": "up",
-        "icon": "📊",
-        "visual_style": "cyberpunk, clean digital",
-        "mood": "serious",
-        "layout_hint": "spotlight center",
-        "duration": 2.0,
-        "animation": "scale_in"
+        "layout": "terminal_mockup",
+        "terminalMockup": {
+          "title": "核心交互界面：一个聊天框",
+          "terminalTitle": "Swimio 界面",
+          "lines": [
+            {
+              "text": "> 用户：3D太阳系",
+              "isUser": true
+            },
+            {
+              "text": "> 行星可旋转，点击查看信息",
+              "isUser": true
+            },
+            {
+              "text": "解析中：创建天体与交互逻辑...",
+              "highlight": false
+            },
+            {
+              "text": "✅ 已生成可交互的3D网页",
+              "highlight": true
+            }
+          ],
+          "calloutText": "用大白话描述你要啥"
+        },
+        "duration": 6.42,
+        "animation": "fade",
+        "englishLabel": "NATURAL LANGUAGE INPUT",
+        "sceneSubtitle": "用大白话描述，比如‘做个3D太阳系’"
       },
       {
-        "type": "comparison",
-        "visual_left": "传统：手动处理",
-        "visual_right": "Locus Founder：AI自动化",
-        "icon": "⚖️",
-        "visual_style": "futuristic, split screen",
-        "mood": "dramatic",
-        "layout_hint": "split left-right",
-        "duration": 1.46,
-        "animation": "slide_up"
+        "layout": "data_compare",
+        "dataCompare": {
+          "title": "输出物：真3D网页，非PPT动画",
+          "items": [
+            {
+              "label": "PPT动画",
+              "baseValue": 1,
+              "baseLabel": "维度",
+              "multiplier": 1,
+              "resultValue": "2D 幻灯片",
+              "color": "orange"
+            },
+            {
+              "label": "Swimio",
+              "baseValue": 3,
+              "baseLabel": "维度",
+              "multiplier": 1,
+              "resultValue": "3D 网页",
+              "color": "cyan"
+            }
+          ],
+          "centerText": "支持拖拽、缩放、链接直接分享"
+        },
+        "duration": 11.77,
+        "animation": "scaleIn",
+        "englishLabel": "REAL 3D OUTPUT",
+        "sceneSubtitle": "网页能拖动、缩放，链接直接分享"
       },
       {
-        "type": "keyword_burst",
-        "visual_keywords": [
-          "一句话描述任务",
-          "AI理解意图",
-          "自动执行"
-        ],
-        "icon": "✨",
-        "visual_style": "energetic, holographic",
-        "mood": "inspiring",
-        "layout_hint": "wide spread",
-        "duration": 1.59,
-        "animation": "zoom_in"
+        "layout": "data_compare",
+        "dataCompare": {
+          "title": "迭代优化：通过尝试逼近理想结果",
+          "items": [
+            {
+              "label": "首次尝试",
+              "baseValue": 60,
+              "baseLabel": "完成度",
+              "multiplier": 1,
+              "resultValue": "60%",
+              "color": "orange"
+            },
+            {
+              "label": "调整描述",
+              "baseValue": 80,
+              "baseLabel": "完成度",
+              "multiplier": 1,
+              "resultValue": "80%",
+              "color": "cyan"
+            },
+            {
+              "label": "精准描述",
+              "baseValue": 95,
+              "baseLabel": "完成度",
+              "multiplier": 1,
+              "resultValue": "95%",
+              "color": "green"
+            }
+          ],
+          "centerText": "多试几次，调整描述是关键"
+        },
+        "duration": 9.0,
+        "animation": "slideUp",
+        "englishLabel": "ITERATIVE OPTIMIZATION",
+        "sceneSubtitle": "多试几次，调整描述是关键"
       },
       {
-        "type": "image_text",
-        "visual_label": "集成平台",
-        "visual_text": "Slack / 邮件 / Web",
-        "icon": "🖼️",
-        "visual_style": "minimal, clean interface",
-        "mood": "calm",
-        "layout_hint": "left aligned",
-        "duration": 1.27,
-        "animation": "fade_in"
-      },
-      {
-        "type": "highlight",
-        "text": "告别重复",
-        "icon": "🚀",
-        "visual_style": "luxurious, golden glow",
-        "mood": "hopeful",
-        "layout_hint": "spotlight center",
-        "duration": 1.6,
-        "animation": "pulse"
-      },
-      {
-        "type": "ending",
-        "text": "评论区扣1\n获取保姆级教程",
-        "icon": "💬",
-        "visual_style": "warm elegant, hopeful",
-        "mood": "hopeful",
-        "layout_hint": "spotlight center",
-        "duration": 1.6,
-        "animation": "fade_out"
+        "layout": "title_card",
+        "titleCard": {
+          "title": "感谢观看",
+          "subtitle": "评论区分享你的3D作品"
+        },
+        "duration": 20.07,
+        "animation": "fade",
+        "englishLabel": "THANK YOU",
+        "sceneSubtitle": "评论区告诉我你做了啥！"
       }
-    ]
+    ],
+    "audioPath": "audio/content_21800_tts.wav"
   },
-  "durationInFrames": 376
+  "durationInFrames": 1491
 }

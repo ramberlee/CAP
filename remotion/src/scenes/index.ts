@@ -1,11 +1,35 @@
+/* Scene component exports.
+
+Two coexisting systems:
+
+- Legacy v1 (10 flat scene types) — kept under `./legacy/` for backward compatibility.
+- Layouts v2 (7 named layouts + block_tree escape hatch) — under `./layouts/`.
+*/
+
+// Shared
 export { SceneWrapper } from './SceneWrapper';
-export { TitleScene } from './TitleScene';
-export { BulletScene } from './BulletScene';
-export { SectionTitleScene } from './SectionTitleScene';
-export { DataScene } from './DataScene';
-export { QuoteScene } from './QuoteScene';
-export { ComparisonScene } from './ComparisonScene';
-export { TimelineScene } from './TimelineScene';
-export { HighlightScene } from './HighlightScene';
-export { ImageCaptionScene } from './ImageCaptionScene';
-export { EndingScene } from './EndingScene';
+
+// Legacy v1 — preserved
+export { TitleScene } from './legacy/TitleScene';
+export { BulletScene } from './legacy/BulletScene';
+export { SectionTitleScene } from './legacy/SectionTitleScene';
+export { DataScene } from './legacy/DataScene';
+export { QuoteScene } from './legacy/QuoteScene';
+export { ComparisonScene } from './legacy/ComparisonScene';
+export { TimelineScene } from './legacy/TimelineScene';
+export { HighlightScene } from './legacy/HighlightScene';
+export { ImageCaptionScene } from './legacy/ImageCaptionScene';
+export { EndingScene } from './legacy/EndingScene';
+
+// v2 layouts
+export {
+  TitleCardScene,
+  CardGridScene,
+  NumberedCardsScene,
+  SplitCompareScene,
+  FlowDiagramScene,
+  FanOutScene,
+  DocTreeScene,
+  BlockTreeScene,
+  layoutRegistry,
+} from './layouts';
