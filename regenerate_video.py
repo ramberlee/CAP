@@ -189,7 +189,8 @@ def regenerate_video(seq: str, config: dict) -> bool:
     logger.info(f"[{seq}] Video: {len(plan['scenes'])} scenes, "
                 f"theme={plan.get('theme', '?')}")
     for i, s in enumerate(plan['scenes']):
-        logger.info(f"  {i}: type={s['type']} icon={s.get('icon','-')} "
+        kind = s.get('layout') or s.get('type', '?')
+        logger.info(f"  {i}: {kind} icon={s.get('icon','-')} "
                     f"dur={s.get('duration','?')}s anim={s.get('animation','?')}")
 
     # ── Step 4: Remotion render ──

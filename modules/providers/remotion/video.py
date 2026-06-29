@@ -204,8 +204,14 @@ class RemotionVideoProvider(VideoProvider):
                         s["duration"] = round(s["duration"] + extra, 2)
 
             # Step 4: iteratively merge shortest adjacent pairs until
-            # average scene duration hits a comfortable viewing pace (~12s)
-            TARGET_AVG = 12.0
+            # average scene duration hits a comfortable short-video pace (~7s).
+            # NOTE: VideoPlanner now sizes scene count to audio segments (1:1±2),
+            # so well-paced plans (~6-8s/scene) pass through untouched. This merge
+            # is a guard against OVER-segmented plans only — chiefly the fallback
+            # plan (1 scene per source sentence → 30+ scenes for long content).
+            # Was 12.0 (felt sluggish, squashed 15 good scenes back into 9); 7.0
+            # matches 抖音 pacing. Lower this further for snappier cuts.
+            TARGET_AVG = 7.0
             target_count = max(5, round(audio_duration / TARGET_AVG))
 
             while len(scenes) > target_count:

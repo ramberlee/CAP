@@ -165,8 +165,9 @@ export const SplitCompareScene: React.FC<{ scene: Scene; theme: ThemePalette }> 
               marginBottom: 12,
             }}
           >
-            {content.barSegments.map((seg, i) => {
-              const total = content.barTotal ?? content.barSegments.reduce((s, x) => s + x.value, 0);
+            {(content.barSegments ?? []).map((seg, i) => {
+              const segs = content.barSegments ?? [];
+              const total = content.barTotal ?? segs.reduce((s, x) => s + x.value, 0);
               const w = total > 0 ? (seg.value / total) * 100 : 0;
               return (
                 <div
