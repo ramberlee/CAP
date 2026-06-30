@@ -240,6 +240,11 @@ remotion/public/*
 remotion/out/*
 remotion/test-inputs/*
 remotion/samples/*
+# Render artifacts — regenerated on every render, must not be tracked.
+# input.json is the per-render composition plan; Root.tsx.bak is the backup the
+# render writes while it temporarily overwrites Root.tsx with a frame-count stub.
+remotion/input.json
+remotion/src/Root.tsx.bak
 chrome*
 .codegraph/*
 .reasonix/*
