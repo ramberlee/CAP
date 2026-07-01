@@ -161,6 +161,9 @@ class WeChatPlatformConfig(DictCompatMixin):
     theme: str = "claude"
     validate_content: bool = False
     max_repair: int = 1
+    # Long-form articles (1500-2500字 + image prompts) easily exceed the
+    # global 4096 limit, truncating the JSON. Override with a larger value.
+    max_tokens: int = 8192
 
 
 class XiaohongshuPlatformConfig(DictCompatMixin):

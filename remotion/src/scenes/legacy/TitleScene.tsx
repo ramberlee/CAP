@@ -1,6 +1,7 @@
 import React from 'react';
 import { interpolate, useCurrentFrame } from 'remotion';
 import { SceneWrapper } from '../SceneWrapper';
+import { AnimatedText } from '../../components/AnimatedText';
 import { FONT_SIZE, FONT_WEIGHT } from '../../styles/typography';
 import { SceneComponentProps } from '../types';
 

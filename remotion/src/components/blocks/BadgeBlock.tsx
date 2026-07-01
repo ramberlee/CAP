@@ -23,8 +23,11 @@ const VARIANT_COLOR: Record<string, { bg: string; fg: string; border: string }> 
  * Pulls colors from the theme if available, else uses VARIANT_COLOR.
  */
 export const BadgeBlock: React.FC<Props> = ({ block, theme, staggerOffset = 0 }) => {
-  const variant = block.variant ?? 'neutral';
   const { opacity, transform } = useBlockEntry(block.animation, staggerOffset);
+
+  // Only badge blocks have variant/icon; tag blocks don't.
+  const b = block as any;
+  const variant = b.variant ?? 'neutral';
 
   // Prefer theme color when available, fall back to hardcoded palette.
   const fallback = VARIANT_COLOR[variant] ?? VARIANT_COLOR.neutral;
@@ -54,7 +57,7 @@ export const BadgeBlock: React.FC<Props> = ({ block, theme, staggerOffset = 0 })
         whiteSpace: 'nowrap',
       }}
     >
-      {block.icon && <span style={{ fontSize: '0.95em' }}>{block.icon}</span>}
+      {b.icon && <span style={{ fontSize: '0.95em' }}>{b.icon}</span>}
       <span>{block.text}</span>
     </span>
   );

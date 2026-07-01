@@ -22,6 +22,13 @@ export const SplitCompareScene: React.FC<{ scene: Scene; theme: ThemePalette }> 
     sceneSubtitle: scene.sceneSubtitle,
   };
 
+  // Normalize content: accept both leftTitle (schema) and leftHeader (LLM output)
+  const leftTitle = content.leftTitle ?? (content as any).leftHeader ?? '';
+  // Normalize leftItems: accept both {text,icon} objects and plain strings
+  const leftItems = (content.leftItems ?? []).map((item) =>
+    typeof item === 'string' ? { text: item, icon: '✕' } : item
+  );
+
   const titleProgress = Math.min(Math.max((frame / 24 - 0.1) / 0.5, 0), 1);
   const titleEase = 1 - Math.pow(1 - titleProgress, 3);
 
@@ -85,10 +92,11 @@ export const SplitCompareScene: React.FC<{ scene: Scene; theme: ThemePalette }> 
               borderBottom: '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            {content.leftTitle}
+            {leftTitle}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {content.leftItems.map((item, i) => {
+            {leftItems.map((itemOrig, i) => {
+              const item = itemOrig as any;
               const itemStart = 18 + i * 5;
               const itemEase = Math.min(Math.max((frame - itemStart) / 12, 0), 1);
               return (
@@ -167,7 +175,7 @@ export const SplitCompareScene: React.FC<{ scene: Scene; theme: ThemePalette }> 
           >
             {(content.barSegments ?? []).map((seg, i) => {
               const segs = content.barSegments ?? [];
-              const total = content.barTotal ?? segs.reduce((s, x) => s + x.value, 0);
+              const total = (content as any).barTotal ?? segs.reduce((s: number, x: any) => s + x.value, 0);
               const w = total > 0 ? (seg.value / total) * 100 : 0;
               return (
                 <div
@@ -190,7 +198,7 @@ export const SplitCompareScene: React.FC<{ scene: Scene; theme: ThemePalette }> 
             })}
           </div>
 
-          {content.barInlineLabel && (
+          {(content as any).barInlineLabel && (
             <div
               style={{
                 fontSize: 14,
@@ -199,7 +207,7 @@ export const SplitCompareScene: React.FC<{ scene: Scene; theme: ThemePalette }> 
                 textAlign: 'center',
               }}
             >
-              {content.barInlineLabel}
+              {(content as any).barInlineLabel}
             </div>
           )}
 

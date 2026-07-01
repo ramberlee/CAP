@@ -25,62 +25,73 @@ export const CardGridScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({
   const titleEase = 1 - Math.pow(1 - titleProgress, 3);
   const titleScale = 0.92 + titleEase * 0.08;
 
+  // Callout fade-in (kept for the new in-column callout)
+  const calloutOpacity = Math.min(Math.max((frame - 60) / 20, 0), 1);
+
   return (
     <SceneFrame theme={theme} englishLabel={content.englishLabel}>
-      {/* Title block */}
+      {/* Vertically-centered column: title → cards → callout.
+          Replaces the old fixed `top:` offsets that crammed content into the
+          upper 40% and left the lower half dead. Cards now size to their
+          content instead of a forced minHeight, so a sparse card no longer
+          leaves a giant empty box. */}
       <div
         style={{
           position: 'absolute',
-          top: 96,
-          left: 0,
-          right: 0,
-          textAlign: 'center',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'stretch',
+          padding: '96px 80px 120px',
           fontFamily: FONT_FAMILY,
           color: theme.text,
-          opacity: titleEase,
-          transform: `scale(${titleScale})`,
         }}
       >
-        <div
-          style={{
-            fontSize: 56,
-            fontWeight: FONT_WEIGHT.bold,
-            letterSpacing: 3,
-          }}
-        >
-          {content.title}
-        </div>
-        {content.calloutSubtext && (
+        {/* Title block */}
+        <div style={{ textAlign: 'center', opacity: titleEase, transform: `scale(${titleScale})` }}>
           <div
             style={{
-              marginTop: 12,
-              fontSize: 22,
-              color: theme.textSecondary,
-              letterSpacing: 2,
+              fontSize: 56,
+              fontWeight: FONT_WEIGHT.bold,
+              letterSpacing: 3,
             }}
           >
-            {content.calloutSubtext}
+            {content.title}
           </div>
-        )}
-      </div>
+          {(content as any).calloutSubtext && (
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 22,
+                color: theme.textSecondary,
+                letterSpacing: 2,
+              }}
+            >
+              {(content as any).calloutSubtext}
+            </div>
+          )}
+        </div>
 
-      {/* 3-column card grid */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 280,
-          left: 80,
-          right: 80,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 32,
-        }}
-      >
-        {content.cards.map((card, idx) => {
+        {/* 3-column card grid — flex: 1 so it expands into available vertical space */}
+        <div
+          style={{
+            marginTop: 48,
+            flex: 1,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 32,
+            alignItems: 'stretch',
+          }}
+        >
+        {content.cards.map((cardOrig, idx) => {
           // Stagger each card
           const cardStart = 12 + idx * 8;
           const cardProgress = Math.min(Math.max((frame - cardStart) / 18, 0), 1);
           const cardEase = 1 - Math.pow(1 - cardProgress, 3);
+
+          // Type assertion: card accepts both schema format and simplified LLM format
+          const card = cardOrig as any;
 
           return (
             <div
@@ -89,7 +100,8 @@ export const CardGridScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({
                 background: theme.glassSurface ?? 'rgba(255,255,255,0.05)',
                 border: `1px solid ${theme.glassBorder ?? 'rgba(255,255,255,0.10)'}`,
                 borderRadius: 18,
-                padding: 24,
+                padding: 28,
+                minHeight: 220,
                 backdropFilter: 'blur(12px)',
                 WebkitBackdropFilter: 'blur(12px)',
                 boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
@@ -97,7 +109,6 @@ export const CardGridScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({
                 color: theme.text,
                 opacity: cardEase,
                 transform: `translateY(${(1 - cardEase) * 20}px)`,
-                minHeight: 320,
                 display: 'flex',
                 flexDirection: 'column',
               }}
@@ -113,7 +124,7 @@ export const CardGridScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({
               >
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: 20,
                     fontWeight: FONT_WEIGHT.bold,
                     letterSpacing: 1,
                   }}
@@ -151,33 +162,56 @@ export const CardGridScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({
                 )}
               </div>
 
-              {/* Card items (checklist) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-                {(card.items ?? []).map((item, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      padding: '8px 12px',
-                      background: 'rgba(255,255,255,0.04)',
-                      borderRadius: 8,
-                      fontSize: 16,
-                      color: theme.text,
-                    }}
-                  >
-                    <span
+              {/* Card items (checklist) OR description text (simplified format).
+                  Items use flex:1 to expand and fill the card evenly when sparse. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, justifyContent: 'flex-start' }}>
+                {(card.items ?? []).length > 0 ? (
+                  (card.items ?? []).map((item: string, i: number) => (
+                    <div
+                      key={i}
                       style={{
-                        color: theme.accentGreen ?? '#2ED573',
-                        fontSize: 14,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '12px 16px',
+                        background: 'rgba(255,255,255,0.04)',
+                        borderRadius: 10,
+                        fontSize: 18,
+                        color: theme.text,
+                        lineHeight: 1.4,
                       }}
                     >
-                      ✓
-                    </span>
-                    <span>{item}</span>
-                  </div>
-                ))}
+                      <span
+                        style={{
+                          color: theme.accentGreen ?? '#2ED573',
+                          fontSize: 16,
+                        }}
+                      >
+                        ✓
+                      </span>
+                      <span>{item}</span>
+                    </div>
+                  ))
+                ) : (
+                  // Fallback: show icon + description (simplified format from LLM)
+                  <>
+                    {card.icon && (
+                      <div style={{ fontSize: 48, textAlign: 'center', marginBottom: 16 }}>
+                        {card.icon}
+                      </div>
+                    )}
+                    {(card as any).desc && (
+                      <div style={{
+                        fontSize: 16,
+                        color: theme.textSecondary,
+                        textAlign: 'center',
+                        lineHeight: 1.6,
+                      }}>
+                        {(card as any).desc}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Optional footer button */}
@@ -215,25 +249,24 @@ export const CardGridScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({
         })}
       </div>
 
-      {/* Callout text under cards */}
+      {/* Callout text under cards — kept inside the centered column so it
+          sits right below the grid instead of floating detached at the bottom. */}
       {content.calloutText && (
         <div
           style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 100,
+            marginTop: 40,
             textAlign: 'center',
             fontFamily: FONT_FAMILY,
             fontSize: 20,
             color: theme.textSecondary,
             letterSpacing: 1.5,
-            opacity: Math.min(Math.max((frame - 60) / 20, 0), 1),
+            opacity: calloutOpacity,
           }}
         >
           {content.calloutText}
         </div>
       )}
+      </div>
     </SceneFrame>
   );
 };

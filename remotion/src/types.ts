@@ -129,6 +129,7 @@ export type Block =
 export interface TitleCardContent {
   title: string;
   subtitle?: string;
+  badge?: BadgeSpec;
   englishLabel?: string;
   sceneSubtitle?: string;
 }
@@ -486,6 +487,7 @@ export interface Scene {
   englishLabel?: string;
   sceneSubtitle?: string;
   subtitleChunks?: SubtitleChunk[];
+  chapterBadge?: string;  // v3 scene chapter badge
 
   // Layout-specific content (only one will be populated per scene)
   cardGrid?: CardGridContent;

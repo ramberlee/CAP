@@ -1,5 +1,6 @@
 import React from 'react';
 import { SceneWrapper } from '../SceneWrapper';
+import { AnimatedText } from '../../components/AnimatedText';
 import { FONT_SIZE, FONT_WEIGHT } from '../../styles/typography';
 import { SceneComponentProps } from '../types';
 import { hexToRgba } from '../../styles/colors';
