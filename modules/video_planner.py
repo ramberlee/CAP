@@ -25,6 +25,55 @@ from modules.config_model import AppConfig
 logger = logging.getLogger(__name__)
 
 
+# ─────────────────────────────────────────────────────────────────
+#  Fixed ending CTA
+#
+#  The closing call-to-action is hard-coded, NOT left to the LLM. Left free,
+#  the model invents unfulfillable promises ("下期预告", "扣个1，下期讲…",
+#  "敬请期待") that the channel can't honor. The ending must be generic and
+#  fully controllable. User directive 2026-06.
+# ─────────────────────────────────────────────────────────────────
+
+ENDING_CTA_TEXT = "评论区聊聊你的看法"
+ENDING_CTA_SUBTITLE = "觉得有用就点个赞"
+
+# Keywords marking an LLM-written closing CTA / promise to strip from the
+# narration tail before we append the fixed one. Covers follow/like/comment
+# prompts and — crucially — forward-looking promises.
+_CTA_KEYWORDS = (
+    "关注", "点赞", "评论", "转发", "收藏", "三连", "扣个", "扣1", "扣 1",
+    "下期", "下集", "下条", "敬请期待", "预告", "别走开", "点个赞", "求关注",
+)
+
+
+def _strip_trailing_cta_segments(segments: list[dict]) -> list[dict]:
+    """Drop trailing segments that are pure CTA / promise lines.
+
+    Stops at the first non-CTA segment counting from the end — closing CTAs
+    cluster at the tail, so this removes the model's sign-off without touching
+    body content.
+    """
+    out = list(segments)
+    while out:
+        text = out[-1].get("text", "") or ""
+        if text and any(kw in text for kw in _CTA_KEYWORDS):
+            out.pop()
+        else:
+            break
+    return out
+
+
+def _apply_fixed_audio_ending(plan: dict) -> None:
+    """Force the closing CTA: strip any LLM-written sign-off from the tail,
+    append the single fixed CTA segment, and rebuild narration to match.
+    Mutates plan in place.
+    """
+    segments = _strip_trailing_cta_segments(plan.get("segments", []))
+    segments.append({"text": ENDING_CTA_TEXT, "tone": "亲切", "pause_after": 0.0})
+    plan["segments"] = segments
+    plan["narration"] = "".join(s.get("text", "") for s in segments)
+
+
 def _create_planner_client(config: AppConfig) -> tuple[OpenAI | None, str]:
     """Create an OpenAI client and model for the planner based on the configured text provider.
 
@@ -55,8 +104,26 @@ AUDIO_PLANNER_SYSTEM_PROMPT = """你是一个专业的短视频配音脚本专�
 ## 配音创作原则
 1. **自然口语化**：像真人说话，不要书面语、不要朗诵腔
 2. **黄金 3 秒**：开场第一句要抓耳、有冲击力
-3. **结尾有号召**：最后引导关注/点赞/评论，语气真诚不僵硬
+3. **不要写结尾号召**：脚本到内容讲完即可结束。**不要写"关注/点赞/评论/转发/下期预告/扣个1/敬请期待"这类结尾号召语**——结尾号召由系统统一添加，你写了也会被替换掉。把精力放在内容本身。
 4. **控制时长**：根据内容需要自由决定总时长，该长则长该短则短
+
+## ⚠ 分段粒度（重要）
+
+**每个 segment 是一个完整的观点/画面单元**，**不是**一个分句。每个 segment 之后会出现一次画面切换。
+
+**硬约束：每段朗读不超过 10 秒（约 40 个汉字）。超过就拆成两段。** 这是为了画面节奏——一段对应一个画面，太长的段会让画面停留过久、显得拖沓。
+
+- ❌ 错误（过细）：把每个逗号都拆成独立 segment → 画面切得太碎
+- ❌ 错误（过粗）：一段塞进 50+ 字 / 朗读 >10 秒 → 画面停太久、节奏拖沓
+- ✅ 正确：**一段 = 一个观点，约 20-40 字，朗读 5-10 秒**
+
+**目标段数**：按总时长粗略对齐（宁可多分，不要少分）
+- 30 秒以内的视频：4-6 段
+- 30-60 秒：8-12 段
+- 60-120 秒：12-18 段
+- 120-200 秒：18-28 段
+
+如果某一段超过 40 字，**必须**拆开 —— 哪怕拆点稍显生硬，也好过画面停顿过久。
 
 ## 输出格式
 输出纯 JSON（不要 markdown 代码块）：
@@ -64,9 +131,8 @@ AUDIO_PLANNER_SYSTEM_PROMPT = """你是一个专业的短视频配音脚本专�
 {
   "narration": "完整的口播文本。用自然流畅的中文写成，段与段之间自然过渡。",
   "segments": [
-    {"text": "GPT-5 来了！", "tone": "激昂", "pause_after": 0.2},
-    {"text": "推理能力提升了整整十倍", "tone": "沉稳有力", "pause_after": 0.3},
-    {"text": "速度更快，成本还更低", "tone": "轻快", "pause_after": 0.2},
+    {"text": "GPT-5 来了！推理能力提升了整整十倍", "tone": "激昂", "pause_after": 0.3},
+    {"text": "速度更快，成本还更低，这是改变行业格局的产品", "tone": "沉稳有力", "pause_after": 0.4},
     {"text": "关注我，第一时间了解 AI 动态", "tone": "亲切", "pause_after": 0.0}
   ],
   "voice_direction": "用激动、快节奏的语气朗读，像科技新闻主播"
@@ -74,7 +140,7 @@ AUDIO_PLANNER_SYSTEM_PROMPT = """你是一个专业的短视频配音脚本专�
 
 ## 字段说明
 - **narration**：完整口播文本，所有 segment 的 text 拼起来
-- **segments**：分段文本，每段一句话。tone 描述语气（激昂/沉稳有力/轻快/亲切/震撼/温暖）
+- **segments**：分段文本，**每段一个观点（1-3 个短句）**。tone 描述语气（激昂/沉稳有力/轻快/亲切/震撼/温暖）
   pause_after 是该段说完后的停顿时长（秒），关键信息后稍长，过渡句后稍短
 - **voice_direction**：15-25 字的 TTS 朗读指令，给语音合成系统用。格式如：
   "用激动、快节奏的语气朗读，像科技新闻主播"
@@ -85,24 +151,23 @@ AUDIO_PLANNER_SYSTEM_PROMPT = """你是一个专业的短视频配音脚本专�
 - 开场 hook → "激昂"、"震撼"
 - 数据/事实 → "沉稳有力"、"专业"
 - 转折/强调 → "轻快"、"犀利"
-- 结尾号召 → "亲切"、"温暖"
 - 对比/冲突 → "紧张"、"严肃"
+（结尾号召由系统统一添加，无需你写，也无需为它选 tone）
 
-## 示例
+## 示例（短视频，~22 秒）
 参考素材："GPT-5 重磅发布。OpenAI 最新模型推理能力提升 10 倍，速度更快成本更低。这是改变行业格局的产品。"
 
 {
-  "narration": "GPT-5 来了！OpenAI 刚刚发布了最新模型。推理能力提升了整整十倍，而且速度更快，成本更低。这将彻底改变行业格局。关注我，第一时间了解 AI 前沿动态！",
+  "narration": "GPT-5 来了！OpenAI 刚刚发布最新模型，推理能力提升了整整十倍。而且速度更快，成本更低。这将彻底改变行业格局。",
   "segments": [
-    {"text": "GPT-5 来了！", "tone": "激昂", "pause_after": 1.0},
-    {"text": "OpenAI 刚刚发布了最新模型", "tone": "沉稳有力", "pause_after": 0.6},
-    {"text": "推理能力提升了整整十倍", "tone": "震撼", "pause_after": 0.8},
-    {"text": "而且速度更快，成本更低", "tone": "轻快", "pause_after": 0.6},
-    {"text": "这将彻底改变行业格局", "tone": "犀利", "pause_after": 0.8},
-    {"text": "关注我，第一时间了解 AI 前沿动态！", "tone": "亲切", "pause_after": 0.5}
+    {"text": "GPT-5 来了！OpenAI 刚刚发布最新模型", "tone": "激昂", "pause_after": 0.5},
+    {"text": "推理能力提升了整整十倍，而且速度更快，成本更低", "tone": "震撼", "pause_after": 0.5},
+    {"text": "这将彻底改变行业格局", "tone": "犀利", "pause_after": 0.5}
   ],
   "voice_direction": "用激动、快节奏的语气朗读，像科技新闻主播"
 }
+
+注意：示例**没有结尾号召段**（"关注我"那种）——脚本讲完内容就结束，结尾由系统统一加。每段都是完整观点。
 """
 
 AUDIO_PLANNER_USER_PROMPT_TEMPLATE = """根据以下参考素材，创作一段自然流畅的口播配音脚本。
@@ -203,6 +268,8 @@ class AudioPlanner:
             plan["segments"] = [{"text": plan["narration"], "tone": "沉稳", "pause_after": 0.0}]
         if "voice_direction" not in plan or not plan.get("voice_direction"):
             plan["voice_direction"] = "用沉稳、专业的语气朗读"
+        # Hard-code the closing CTA (strip LLM sign-off, append fixed ending).
+        _apply_fixed_audio_ending(plan)
 
     def _fallback_audio_plan(self, script: str, title: str) -> dict:
         """Generate a simple audio plan when LLM is unavailable."""
@@ -223,11 +290,13 @@ class AudioPlanner:
 
         narration = "".join(seg["text"] for seg in segments)
         logger.info(f"Using fallback audio plan: {len(segments)} segments")
-        return {
+        plan = {
             "narration": narration,
             "segments": segments,
             "voice_direction": "用沉稳、专业的语气朗读",
         }
+        _apply_fixed_audio_ending(plan)
+        return plan
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -239,6 +308,37 @@ class AudioPlanner:
 # The actual system prompt used for plan generation is custom-written
 # by an LLM for each piece of content.
 VIDEO_PLANNER_SEED_PROMPT = """你是一个专业的短视频视觉导演。根据素材和音频时间戳，设计引人入胜的视频画面编排。
+
+## 第零步：先判断素材气质（重要——必须先做这一步）
+
+在动手选 layout 之前，**先老老实实**评估手上的素材属于哪一类。这一步决定你走决策树的哪条路径：
+
+- **富信息型**：素材里**实际**含具体数字、含 2+ 项明确并列的内容、有清晰的前后对比或步骤、有产品/工具的具体操作描述
+- **金句型**：素材是口号、感性叙述、悬念问句、单一观点 —— **没有**数字、**没有** 3+ 项可枚举的内容、**没有**实质对比
+- **混合型**：整体偏金句，但含 1-2 个具体数字或一个简单对比
+
+判断完之后：
+- 富信息型 → 走决策树前面的高密度分支（data_compare / connected_cards / terminal_mockup 等）
+- 金句型 → **跳过决策树前面的高密度分支**，直接走金句模式：以 `title_card` 强动画为主、配 `type: quote` / `type: highlight`，参见参考编排 2
+- 混合型 → 混搭：稀薄段落用 title_card/quote，含数字的段落用 data_compare
+
+判断的关键：**只看"素材里实际有什么"，不看"我希望它有什么"**。看不到数字，就承认它没数字；看不到 3 项并列，就承认它没有 3 项并列。**不要用想象补全**。
+
+## 铁律：不虚构（与"画面≠口播"同级的硬规则）
+
+**绝对不允许为了填充某个 layout 而虚构素材里没有的内容**。这是底线。
+
+❌ 错误：素材只说"问得对 vs 问得错"，你为了用 `card_grid` 编出"模糊需求 / 只抛问题 / 缺少背景"三列
+❌ 错误：素材没数字，你为了用 `data_compare` 编出"效率提升 17.3%" 或 "3 倍"
+❌ 错误：素材是一句口号，你为了凑 5 个场景虚构 3 个不同的小标题
+
+✅ 正确：素材只有 1 个观点 → 就用 1 个 `title_card` 表达，并以**字号/动画/留白变化**做时长延展
+✅ 正确：素材是金句 → 用 `type: quote` 把那句话单独立起来
+✅ 正确：素材没数字 → 完全不出现数字，靠画面表达力承载
+
+**判断是否虚构的标准**：画面上每一个具体名词（类别名、数字、对比项、引用句、小标题），都应该能在**原素材文字**里找到对应（直接出现 或 显然的同义改写）。找不到对应 = 虚构 = 必须删除或换成另一种表达。
+
+宁可让画面"看起来素一点"，也不要塞虚构内容。短视频观众对"瞎编"的容忍度低，识破即翻车。
 
 ## 核心原则（必须遵守）
 
@@ -256,19 +356,24 @@ VIDEO_PLANNER_SEED_PROMPT = """你是一个专业的短视频视觉导演。根�
 - 口播提到人名/产品 → 画面给**logo、截图、关系图**
 - 口播说"第一点…" → 画面给**编号 + 核心词**（不要重复整句）
 
-### 原则二：信息密度 — 每个场景必须有「干货」
+### 原则二：信息密度 — 看素材给什么，画面就承什么
 
-每个场景的画面必须包含**具体的、可量化的信息**，不能只有空洞的标题。
+**素材里有数据/对比/列表时**，尽量把它们呈现在画面上，让信息密度更高。
 
-❌ 低密度：场景只有标题"效率提升"和一行副标题
-✅ 高密度：场景包含"效率提升 300%"、对比数据、关键指标
+❌ 不该做：素材本来有"效率提升 300%"，画面只显示空洞标题"效率提升"
+✅ 该做：素材有"效率提升 300%"，画面用 data_compare 把 300% 显眼地呈现
 
-**信息密度检查清单（每个场景至少满足 2 项）：**
+**素材是金句/口号/感性叙述、本身就没有数字和列表时**，不要强行编造数字凑密度。
+这种情况走"金句模式"——用 `title_card` 强动画 / `highlight` / `quote` 表达，靠**动画节奏、字号对比、留白处理**做画面差异化即可。编造伪精确数字（"提升 17.3%"）反而会让短视频翻车。
+
+**素材有干货时的检查清单（尽量满足 2 项以上）：**
 1. 有具体数字（百分比、倍数、金额、时间）
 2. 有对比（前后对比、AB 对比、多方案对比）
 3. 有列表/要点（3-5 个关键点）
 4. 有状态/进度（完成度、加载状态、优先级）
 5. 有引用/金句（来源标注）
+
+**素材是金句/氛围型时**：上面五条一项都不强求。把"画面感"做好（参见原则三的金句分支和参考编排 2）。
 
 ### 原则三：布局选择 — 看内容，不看偏好
 
@@ -297,6 +402,11 @@ VIDEO_PLANNER_SEED_PROMPT = """你是一个专业的短视频视觉导演。根�
 │  └─→ doc_tree
 ├─ 是封面/章节标题？
 │  └─→ title_card
+├─ 是金句/口号/感性叙述（没有数字、没有列表、没有对比）？
+│  └─→ title_card 强动画（scaleIn/typewriter）
+│      或 highlight（type，大字 + 颜色对比）
+│      或 quote（type，配引用标识）
+│      要点：动画/字号/留白做差异化，**不要强行编数字**
 └─ 以上都不匹配？
    └─→ block_tree（自由组合 block 元素）
 ```
@@ -343,12 +453,35 @@ VIDEO_PLANNER_SEED_PROMPT = """你是一个专业的短视频视觉导演。根�
 **flow_diagram** — 流程图：`flowDiagram`
 **fan_out** — 发散聚合：`fanOut`
 **doc_tree** — 文档树：`docTree`
-**title_card** — 封面：`titleCard`（title, subtitle）
+**title_card** — 封面/章节标题：`titleCard`（title, subtitle, badge?）。当场景聚焦一个关键词/术语时，用 badge 突出它（如 {"text": "embed", "variant": "cyan"}），badge 会显示在标题下方作为视觉锚点
 **block_tree** — 自由组合：`blocks[]`
 
 ### 备选：基础 type（仅在以上布局都不匹配时）
 
 title / bullet / section_title / highlight / ending / data_card / quote / comparison / timeline / image_caption
+
+## ⚠ 警告：layout 必填字段（选了就要填齐，否则被静默替换）
+
+**渲染系统会校验每个 layout 的必填子字段。如果你选了 layout 但没填齐它的必填字段，系统会静默把它替换成 `title_card` 兜底——你想表达的内容会丢失，画面只剩一个标题**。所以**没把握填齐时，请直接用 `title_card + 强动画` 或 `type: quote / type: highlight`**，不要把内容塞进会被静默丢弃的复杂 layout。
+
+| layout | 必填子字段 |
+|---|---|
+| `data_compare` | `dataCompare.items[]`（每项至少 label + baseValue + resultValue） |
+| `terminal_mockup` | `terminalMockup.lines[]`（每行至少 text） |
+| `tech_multi_panel` | `techMultiPanel.leftPanel.items` + `centerPanel.body` |
+| `connected_cards` | `connectedCards.cards[]`（每张至少 title） |
+| `architecture_flow` | `architectureFlow.nodes[]` |
+| `stack_highlight` | `stackHighlight.leftItems[]` + `rightCard.title` |
+| `card_grid` | `cardGrid.cards[]`（每张至少 title） |
+| `numbered_cards` | `numberedCards.cards[]`（每张至少 name 或 items） |
+| `split_compare` | `splitCompare.leftItems[]` + `splitCompare.rightHeader` + `splitCompare.barSegments[]`（每段 label+value+color） |
+| `flow_diagram` | `flowDiagram.llmLabel` |
+| `fan_out` | `fanOut.leftItems[]` + `fanOut.rightCardTitle` |
+| `doc_tree` | `docTree.toc[]` |
+| `block_tree` | `blocks[]` |
+| `title_card` | `titleCard.title`（badge 可选，用于突出关键词） |
+
+**铁律重申**：填这些字段时，**不要为了凑齐字段而虚构素材里没有的内容**（参见前面的"铁律：不虚构"）。如果原素材撑不起 `data_compare.items[]` 需要的数据点，就别选 `data_compare`，老老实实用 `title_card` 或 `quote`。
 
 ## 主题 theme
 
@@ -376,14 +509,14 @@ title / bullet / section_title / highlight / ending / data_card / quote / compar
 **必填字段**：`layout`, `duration`, `sceneSubtitle`（每场都填）
 **推荐字段**：`englishLabel`, `animation`
 
-## 参考编排
+## 参考编排 1 —— 富素材（有数据、有 3 段并列、有终端演示）
 
 ```json
 {
   "title": "让 Claude Code 替你干一天的 4 个习惯",
   "theme": "dark_glass",
   "scenes": [
-    {"layout": "title_card", "titleCard": {"title": "让 Claude Code 替你干一天", "subtitle": "4 个习惯"}, "duration": 3, "animation": "scaleIn", "sceneSubtitle": "效率翻倍的秘密"},
+    {"layout": "title_card", "titleCard": {"title": "让 Claude Code 替你干一天", "subtitle": "4 个习惯", "badge": {"text": "CLAUDE CODE", "variant": "cyan"}}, "duration": 3, "animation": "scaleIn", "sceneSubtitle": "效率翻倍的秘密"},
     {"layout": "data_compare", "dataCompare": {"title": "AI 是乘法，不是加法", "items": [{"label": "会写代码的人", "baseValue": 50, "baseLabel": "底子", "multiplier": 3, "resultValue": 150, "color": "orange"}, {"label": "刚入门的小白", "baseValue": 10, "baseLabel": "底子", "multiplier": 3, "resultValue": 30, "color": "cyan"}], "centerText": "越会写代码，越能借上它的力"}, "duration": 6, "animation": "slideUp", "sceneSubtitle": "AI 放大基础能力"},
     {"layout": "terminal_mockup", "terminalMockup": {"title": "习惯一：让它列待办清单", "terminalTitle": "Claude 的一条回复", "lines": [{"text": "帮我配一下环境变量", "isUser": true}, {"text": "好的，我需要确认几个问题：\n1. 操作系统？\n2. 哪个变量？", "highlight": true}], "calloutText": "你十有八九看漏了"}, "duration": 6, "animation": "fade", "sceneSubtitle": "关键信息容易被忽略"},
     {"layout": "connected_cards", "connectedCards": {"title": "核心就一条", "cards": [{"num": "01", "title": "让它多干活", "items": ["写代码", "跑测试", "改 bug"]}, {"num": "02", "title": "你少干活", "items": ["只做判断", "只做验收"]}, {"num": "03", "title": "省 token", "items": ["精准提问", "减少来回"]}]}, "duration": 5, "animation": "slideUp", "sceneSubtitle": "核心就一条：让它多干活"},
@@ -391,6 +524,33 @@ title / bullet / section_title / highlight / ending / data_card / quote / compar
   ]
 }
 ```
+
+## 参考编排 2 —— 稀薄素材的金句模式
+
+素材："为什么 90% 的人用不好 AI？答案只有一个字：问。问得对，AI 就帮你；问得错，AI 就糊弄你。关注我，下条讲怎么问。"
+
+观察：素材里**没有数字、没有对比、没有列表** —— 典型的金句型。
+此时不要强行编数字（"提升 17.3%" 这种伪精确会翻车），靠动画/字号/留白把氛围做足。
+
+```json
+{
+  "title": "为什么 90% 的人用不好 AI",
+  "theme": "dark_glass",
+  "scenes": [
+    {"layout": "title_card", "englishLabel": "intro", "titleCard": {"title": "90% 的人用不好 AI", "subtitle": "为什么？"}, "duration": 3, "animation": "scaleIn", "sceneSubtitle": "悬念开场"},
+    {"layout": "title_card", "englishLabel": "the answer", "titleCard": {"title": "问", "subtitle": "只有一个字"}, "duration": 2.5, "animation": "scaleIn", "sceneSubtitle": "一字答案"},
+    {"type": "quote", "englishLabel": "insight", "quote": "问得对，AI 就帮你", "quoteAuthor": "—— 关键洞察", "duration": 4, "animation": "typewriter", "sceneSubtitle": "核心金句"},
+    {"type": "highlight", "englishLabel": "essence", "highlight": "提问 > 工具", "highlightValue": "✦", "body": "再好的 AI 也救不了糟糕的问题", "duration": 3.5, "animation": "scaleIn", "sceneSubtitle": "本质对比"},
+    {"layout": "title_card", "englishLabel": "outro", "titleCard": {"title": "下条讲：怎么问", "subtitle": "关注不迷路"}, "duration": 3, "animation": "fade", "sceneSubtitle": "号召收尾"}
+  ]
+}
+```
+
+5 个场景：3 个 `title_card`（不同动画、不同字数密度）+ 1 个 `quote` + 1 个 `highlight`。
+**没有任何编造的数字**。表达力靠：
+- 动画节奏（scaleIn → scaleIn → typewriter → scaleIn → fade）
+- 字号对比（"问" 这一个字独占一屏 vs "90% 的人用不好 AI" 完整句）
+- 留白处理（短 title_card 上下留白多，长 title_card 紧凑）
 """
 
 VIDEO_PLANNER_USER_PROMPT_TEMPLATE = """根据素材和音频时间戳，设计视频画面的场景编排。
@@ -404,11 +564,13 @@ VIDEO_PLANNER_USER_PROMPT_TEMPLATE = """根据素材和音频时间戳，设计�
 {audio_timeline}
 
 == 关键要求 ==
-1. **画面 ≠ 口播**：画面文字必须和口播内容不同。口播说句子，画面只给关键词/数字/符号
-2. **每个场景必须有干货**：至少包含具体数字、对比、列表、状态中的 2 项
-3. **布局选择**：按决策树选布局。有数据对比 → data_compare，有终端操作 → terminal_mockup，有 3 个并列 → connected_cards/card_grid
+{scene_count_hint}1. **画面 ≠ 口播**：画面文字必须和口播内容不同。口播说句子，画面只给关键词/数字/符号
+2. **场景气质匹配素材**：
+   - 素材有数据/对比/3+ 项列表 → 优先用高密度布局（data_compare、connected_cards、card_grid 等），尽量含 2 项以上干货
+   - 素材是金句/口号/感性叙述（无数字/无对比/无列表）→ 走金句模式（title_card 强动画 / quote / highlight），靠动画字号留白表达，**不要编造数字**
+3. **布局选择**：按决策树选布局。有数据对比 → data_compare，有终端操作 → terminal_mockup，有 3 个并列 → connected_cards/card_grid，金句型素材 → title_card 强动画 + highlight/quote
 4. **每场必填**：sceneSubtitle（≤20字）+ englishLabel + duration
-5. **首尾固定**：第一个场景用 title_card 做封面，最后一个用 title_card 做收尾（标题写"感谢观看"或总结语）
+5. **首尾固定**：第一个场景用 title_card 做封面；**最后一个收尾场景的文案由系统统一生成（评论区互动），你不要写"下期预告/下期讲X/扣个1/关注/敬请期待"这类号召或承诺**——写了也会被替换。正常铺陈内容即可。
 6. **时长灵活**：duration 之和不必精确匹配音频，以表达到位为准
 
 请输出 JSON 构图计划。"""
@@ -453,50 +615,86 @@ class VideoPlanner:
 
         audio_timeline = _format_audio_timeline(audio_timings)
 
+        # When we have audio segments, tell the LLM to roughly match scene count
+        # to segment count (1:1 ± 2). Prevents 32-segment audio collapsing into
+        # 11 scenes with 17s/scene pacing. Empty when no audio_timings.
+        if audio_timings:
+            n = len(audio_timings)
+            scene_count_hint = (
+                f"0. **场景数对齐音频段数**：本次音频共 {n} 段（见上方时间戳）。"
+                f"请产出 **{max(4, n-2)}~{n+2} 个 scene**，让画面节奏跟着音频段切换"
+                f"（短视频每个 scene 5-8 秒最佳，不要把多段音频塞进同一个 scene）。\n"
+            )
+        else:
+            scene_count_hint = ""
+
         format_kwargs = dict(
             title=title or "无标题",
             script=script[:800],
             tags=", ".join(tags[:5]) if tags else "无",
             audio_timeline=audio_timeline,
+            scene_count_hint=scene_count_hint,
         )
         user_prompt = VIDEO_PLANNER_USER_PROMPT_TEMPLATE.format(**format_kwargs)
 
-        # Retry once on failure (transient LLM errors)
-        prompts_to_try = [
-            ("first attempt", VIDEO_PLANNER_SEED_PROMPT),
-            ("retry", VIDEO_PLANNER_SEED_PROMPT),
-        ]
-
-        text = ""
+        # Retry on failure. The lite-tier model emits invalid JSON for long
+        # multi-scene plans fairly often (~60% fail rate measured at 15 scenes),
+        # so json.loads() runs INSIDE this loop — a parse failure must trigger
+        # another attempt, not an immediate fallback. (Previously json.loads was
+        # OUTSIDE the loop: malformed-but-non-empty JSON skipped every retry and
+        # went straight to the ugly template fallback, which is what made bad
+        # videos.) Lower temperature than content tasks — structured JSON benefits
+        # from less sampling randomness.
+        #
+        # response_format=json_object forces valid JSON at the API layer (huge
+        # reliability win on weaker models like doubao-lite). But not every model
+        # supports it (e.g. glm rejects the param with a 400), so we probe once
+        # and gracefully drop the param if the model refuses it.
+        MAX_ATTEMPTS = 3
+        plan = None
         text_raw = ""
-        for prompt_label, system_prompt in prompts_to_try:
+        use_json_mode = True
+        attempt = 0
+        while attempt < MAX_ATTEMPTS:
+            attempt += 1
             try:
-                logger.info(f"Generating visual composition plan via LLM ({prompt_label})...")
-                response = self.client.chat.completions.create(
+                logger.info(f"Generating visual composition plan via LLM (attempt {attempt}/{MAX_ATTEMPTS})...")
+                create_kwargs = dict(
                     model=self.model,
-                    max_tokens=4096,
-                    temperature=0.7,
+                    max_tokens=8192,
+                    temperature=0.4,
                     messages=[
-                        {"role": "system", "content": system_prompt},
+                        {"role": "system", "content": VIDEO_PLANNER_SEED_PROMPT},
                         {"role": "user", "content": user_prompt},
                     ],
                 )
-                text_raw = response.choices[0].message.content.strip()
-                text = _extract_json(text_raw)
-                text = _fix_json(text)
-                if text.strip():
-                    break  # Success
-                logger.warning(f"Empty JSON from video planner ({prompt_label}). Raw (first 300 chars): {text_raw[:300]}")
+                if use_json_mode:
+                    create_kwargs["response_format"] = {"type": "json_object"}
+                response = self.client.chat.completions.create(**create_kwargs)
+                text_raw = (response.choices[0].message.content or "").strip()
+                text = _fix_json(_extract_json(text_raw))
+                if not text.strip():
+                    logger.warning(f"Empty JSON from video planner (attempt {attempt}). Raw: {text_raw[:200]}")
+                    continue
+                plan = json.loads(text)
+                break  # parsed successfully
+            except json.JSONDecodeError as e:
+                logger.warning(f"Video planner invalid JSON (attempt {attempt}): {e} | {text_raw[:160]}")
             except Exception as e:
-                logger.error(f"Video planner LLM call failed ({prompt_label}): {e}")
+                # Model doesn't support json_object mode → drop it and retry
+                # without burning a real attempt (the flag flips at most once).
+                if use_json_mode and "response_format" in str(e):
+                    logger.info("Model rejects json_object mode; retrying without it")
+                    use_json_mode = False
+                    attempt -= 1
+                    continue
+                logger.error(f"Video planner LLM call failed (attempt {attempt}): {e}")
 
-        if not text.strip():
-            logger.warning("All video planner attempts failed, using fallback plan")
+        if plan is None:
+            logger.warning(f"All {MAX_ATTEMPTS} video planner attempts failed, using fallback plan")
             return self._fallback_plan(script, title, total_duration, audio_timings)
 
         try:
-
-            plan = json.loads(text)
             self._validate_plan(plan)
 
             # If too few scenes, fall back
@@ -508,8 +706,25 @@ class VideoPlanner:
             if audio_timings:
                 _apply_audio_timings(plan, audio_timings)
 
-            # Review → regenerate loop: keep revising until score is acceptable
-            MAX_REVIEW_ROUNDS = 3
+            # Review → regenerate loop is DISABLED (MAX_REVIEW_ROUNDS = 0).
+            #
+            # We tried 3 rounds, then 1 round. Both made sparse-material plans worse,
+            # not better. The audit trail (CONTEXT.md, removed at commit time):
+            #   - Round 1 with MAX=3: review gave sparse content low scores → forced
+            #     LLM to fabricate density on regenerate (invented 3 categories to
+            #     fill card_grid when source only had a binary 对/错 distinction).
+            #   - Round 2 with MAX=1: same failure mode, just half the token cost.
+            #   - With MAX=0: SPARSE produces clean 金句-mode output (title_card +
+            #     quote + highlight) on first attempt; RICH produces correct
+            #     high-density layouts on first attempt. The review's bias toward
+            #     "more is better" hurt the sparse path with zero benefit on rich.
+            #
+            # _review_plan and REVIEW_PROMPT are kept as dead code in case we want
+            # to revive a different review strategy later. Just bump this back to
+            # 1+ to re-enable. The current SEED_PROMPT (第零步 classification +
+            # 铁律 anti-fabrication rule) + _validate_plan structural checks are
+            # sufficient quality gates without a semantic review pass.
+            MAX_REVIEW_ROUNDS = 0
             for round_idx in range(MAX_REVIEW_ROUNDS):
                 review = self._review_plan(plan, script, title, tags)
                 if not review:
@@ -638,7 +853,7 @@ class VideoPlanner:
         "title_card":     ["titleCard.title"],
         "card_grid":      ["cardGrid.cards"],
         "numbered_cards": ["numberedCards.cards"],
-        "split_compare":  ["splitCompare.leftItems", "splitCompare.rightHeader"],
+        "split_compare":  ["splitCompare.leftItems", "splitCompare.rightHeader", "splitCompare.barSegments"],
         "flow_diagram":   ["flowDiagram.llmLabel"],
         "fan_out":        ["fanOut.leftItems", "fanOut.rightCardTitle"],
         "doc_tree":       ["docTree.toc"],
@@ -673,12 +888,46 @@ class VideoPlanner:
         return True
 
     def _coerce_to_title_card(self, scene: dict) -> dict:
-        """Convert an invalid scene into a title_card so the renderer never sees a broken spec."""
+        """Convert an invalid scene into a title_card so the renderer never sees a broken spec.
+
+        Recovers a meaningful title from any layout-specific .title field or scene
+        metadata. Falls back to "亮点" only when every recovery attempt is empty
+        — the placeholder used to bleed into final videos as a visible "亮点"
+        on-screen, which looked like a bug. See CONTEXT — content 024 verification.
+        """
+        # Layout blocks whose .title (or equivalent root field) we can borrow
+        _LAYOUT_TITLE_FALLBACKS = (
+            ("titleCard",        "title"),
+            ("cardGrid",         "title"),
+            ("numberedCards",    "title"),
+            ("splitCompare",     "title"),
+            ("flowDiagram",      "title"),
+            ("fanOut",           "title"),
+            ("docTree",          "title"),
+            ("dataCompare",      "title"),
+            ("techMultiPanel",   "title"),
+            ("connectedCards",   "title"),
+            ("architectureFlow", "title"),
+            ("stackHighlight",   "title"),
+            ("terminalMockup",   "title"),
+        )
+
+        title = scene.get("title")
+        if not title:
+            for block_name, key in _LAYOUT_TITLE_FALLBACKS:
+                block = scene.get(block_name)
+                if isinstance(block, dict):
+                    t = block.get(key) or block.get("centerText") or block.get("rightCardTitle")
+                    if t:
+                        title = t
+                        break
+        # Fall back to scene-level descriptive fields before giving up
         title = (
-            scene.get("title")
-            or (scene.get("titleCard") or {}).get("title")
-            or (scene.get("cardGrid") or {}).get("title")
-            or (scene.get("docTree") or {}).get("title")
+            title
+            or scene.get("highlight")
+            or scene.get("quote")
+            or scene.get("sceneSubtitle")
+            or scene.get("englishLabel")
             or "亮点"
         )
         return {
@@ -783,6 +1032,23 @@ class VideoPlanner:
                         new_key = alt_keys[converted % len(alt_keys)]
                         self._convert_scene_key(scene, new_key)
                         converted += 1
+
+        # Hard-code the closing scene to the fixed CTA. The LLM is told not to
+        # write ending CTAs (see SEED_PROMPT), but we overwrite the last scene
+        # regardless so "下期预告 / 扣个1" promises can never reach the render.
+        # Cap duration at 4s — the CTA is just two short lines, no need to linger.
+        if plan["scenes"]:
+            last = plan["scenes"][-1]
+            anim = last.get("animation")
+            cta_duration = min(last.get("duration", 3.0), 4.0)
+            plan["scenes"][-1] = {
+                "layout": "title_card",
+                "englishLabel": last.get("englishLabel") or "outro",
+                "sceneSubtitle": ENDING_CTA_SUBTITLE,
+                "duration": cta_duration,
+                "animation": anim if anim in self._VALID_ANIMATIONS else "fade",
+                "titleCard": {"title": ENDING_CTA_TEXT, "subtitle": ENDING_CTA_SUBTITLE},
+            }
 
     def _scrub_brackets_in_place(self, obj: dict) -> None:
         """Recursively remove [VIDEO:...] brackets from any string values."""
@@ -913,7 +1179,22 @@ class VideoPlanner:
 
 审核维度（按重要性排序）：
 1. **表达到位**：画面内容是否有效补充了口播？是否有场景在重复口播内容？（最重要）
-2. **布局恰当**：场景使用的 layout / type 是否和该场景内容匹配？
+2. **虚构检查（次重要！）**：画面上出现的具体内容（类别名、数字、对比项、引用句、小标题），是否能在**原素材**里找到合理依据？
+
+   ✅ **算合理依据**（不扣分）：
+   - 原文直接出现：原文有"200 行/600 行"，画面用 `data_compare` 把 200→600 呈现 ✓
+   - 显然的同义改写："效率翻倍" ≈ 原文"效率提升" ✓
+   - **数值推导**：原文有 200 和 600，画面给出"3 倍"（600÷200=3）✓；原文有"提升 40%"，画面直接用 40% ✓
+   - **逐项对应**：原文说"三个习惯：习惯一…习惯二…习惯三…"，画面用 `connected_cards` 列这三个 ✓
+
+   ❌ **算虚构**（必须扣分）：
+   - 凭空具体数字：原文无任何数据，画面给出"提升 17.3%" / "3 倍效率" → 虚构
+   - 凭空分类名：原文是"问得对 vs 问得错"二元，画面编出"模糊需求/只抛问题/缺少背景"3 个全新分类 → 虚构
+   - 凑数列举：原文只有 1 个观点，画面用 `card_grid` 凑出 3 张不同卡片 → 虚构
+   - 凭空案例：原文没提具体人/公司/事件，画面写出"某某团队用了之后…" → 虚构
+
+   **判断顺序**：先看是否有直接出处或合法推导，找不到才算虚构。**宁可放过疑似虚构，不要错杀合法推导**。
+3. **布局恰当**：场景使用的 layout / type 是否和该场景内容匹配？
    - 多卡片对比 → card_grid / numbered_cards
    - 左右分栏对比 → split_compare
    - 系统关系/流程 → flow_diagram
@@ -922,10 +1203,13 @@ class VideoPlanner:
    - 数据对比/倍增效果 → data_compare
    - AI 工具演示/终端操作 → terminal_mockup
    - 通用封面/收尾 → title_card
-3. **画面美观**：场景类型搭配是否合理？视觉节奏是否有变化？
-4. **信息密度**：每个场景的数据量是否充实？是否有场景太空洞？
-5. **节奏感**：场景之间的过渡是否自然？开头是否吸引人？结尾是否有力？
-6. **合理性**：有没有场景短到让观众完全来不及看（<1s）？有没有场景长到让人失去耐心？
+4. **画面美观**：场景类型搭配是否合理？视觉节奏是否有变化？
+5. **表达气质匹配**：场景设计是否匹配素材气质？
+   - 素材有数据/对比/列表时，是否用上了高密度布局（data_compare、connected_cards 等）？退化到大量 title_card 兜底 = 失分
+   - 素材是金句/口号/感性叙述时，是否走金句模式（title_card 强动画 / quote / highlight）？强行塞编造的数字 = 失分
+   - 两种情况都匹配则给高分；任意一种走样则减分
+6. **节奏感**：场景之间的过渡是否自然？开头是否吸引人？结尾是否有力？
+7. **合理性**：有没有场景短到让观众完全来不及看（<1s）？有没有场景长到让人失去耐心？
 
 注意：不要用模板思维去评判——允许各种创意编排，只要表达效果好、画面美观即可。
 
@@ -1338,6 +1622,11 @@ def _apply_audio_timings(plan: dict, timings: list[dict]) -> None:
                 ratio = s.get("duration", 3.0) / group_total
                 s["duration"] = round(seg_dur * ratio, 2)
 
+    # Cap the last scene (CTA) — it's just two short lines, no need to linger.
+    MAX_CTA_DURATION = 4.0
+    if scenes and scenes[-1].get("duration", 0) > MAX_CTA_DURATION:
+        scenes[-1]["duration"] = MAX_CTA_DURATION
+
     # Safety net: scenes shorter than 1.5s are unwatchable flickers
     # Borrow from neighbors to bring them up to a minimum
     MIN_SCENE_DURATION = 1.5
@@ -1383,3 +1672,6 @@ def _normalize_durations(plan: dict, target_total: float) -> None:
         scenes[-1]["duration"] = round(scenes[-1]["duration"] + diff, 1)
         if scenes[-1]["duration"] < 1.0:
             scenes[-1]["duration"] = 1.0
+    # Cap last scene (CTA) — don't let it balloon from rounding residue
+    if scenes:
+        scenes[-1]["duration"] = min(scenes[-1]["duration"], 4.0)

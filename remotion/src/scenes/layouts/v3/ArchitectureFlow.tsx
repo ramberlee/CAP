@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Scene } from '../../../types';
 import { ThemePalette } from '../../../themes';
 import { FONT_FAMILY, FONT_WEIGHT } from '../../../styles/typography';
@@ -32,13 +32,57 @@ export const ArchitectureFlow: React.FC<{ scene: Scene; theme: ThemePalette }> =
   theme,
 }) => {
   const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
   const content = scene.architectureFlow ?? {
     title: scene.title ?? '',
     nodes: [],
     connections: [],
   };
 
-  const nodes = content.nodes ?? [];
+  // Diagram area mirrors the absolutely-positioned container below:
+  // top:220, bottom:100 → height = height - 320; spans the full width.
+  const DIAGRAM_W = width;
+  const DIAGRAM_H = height - 320;
+  const NODE_W = 220;
+  const NODE_H = 80;
+
+  // Normalize nodes. Two positioning modes:
+  //  1. Explicit coords (percentage 0-100, or raw pixels) — used as given.
+  //  2. No coords — auto-laid-out as a horizontal left→right flow.
+  // Mode 2 is the common case (the planner emits nodes without x/y). Without
+  // it, positionless nodes all fall back to `left/top: undefined` and stack
+  // at (0,0), overlapping into a single clump in the top-left while the rest
+  // of the diagram stays empty — exactly the "one pill top-left, empty
+  // center" frame that was flagged as low quality.
+  const rawNodes = (content.nodes ?? []).map((node) => ({
+    ...node,
+    w: node.w ?? NODE_W,
+    h: node.h ?? NODE_H,
+    x:
+      node.x > 0 && node.x <= 100
+        ? 80 + (node.x / 100) * (width - 240) - ((node.w ?? NODE_W) / 2) // center-align
+        : node.x,
+    y: node.y > 0 && node.y <= 100 ? (node.y / 100) * DIAGRAM_H : node.y,
+  }));
+
+  const needsAutoLayout = rawNodes.some(
+    (n) => n.x == null || Number.isNaN(n.x as number),
+  );
+  let nodes = rawNodes;
+  if (needsAutoLayout && rawNodes.length > 0) {
+    const gap = 120;
+    const totalWidth =
+      rawNodes.length * NODE_W + Math.max(0, rawNodes.length - 1) * gap;
+    const startX = Math.max(0, (DIAGRAM_W - totalWidth) / 2);
+    const centerY = Math.max(0, (DIAGRAM_H - NODE_H) / 2);
+    nodes = rawNodes.map((n, i) => ({
+      ...n,
+      x: startX + i * (NODE_W + gap),
+      y: n.y ?? centerY,
+      w: NODE_W,
+      h: NODE_H,
+    }));
+  }
   const connections = content.connections ?? [];
 
   const nodeAnims = useStaggeredAnimation({
@@ -130,6 +174,9 @@ export const ArchitectureFlow: React.FC<{ scene: Scene; theme: ThemePalette }> =
         {nodes.map((node, i) => {
           const anim = nodeAnims[i] ?? { opacity: 0, transformY: 20 };
           const nodeColor = COLOR_MAP[node.color] ?? COLOR_MAP.neutral;
+          // The planner emits `desc` for node descriptions; older specs used
+          // `sublabel`. Accept either so the description actually renders.
+          const sublabel = node.sublabel ?? (node as any).desc;
 
           const nodeContent = (
             <div
@@ -163,19 +210,19 @@ export const ArchitectureFlow: React.FC<{ scene: Scene; theme: ThemePalette }> =
                     fontSize: 20,
                     fontWeight: FONT_WEIGHT.bold as number,
                     color: nodeColor,
-                    marginBottom: node.sublabel ? 4 : 0,
+                    marginBottom: sublabel ? 4 : 0,
                   }}
                 >
                   {node.label}
                 </div>
-                {node.sublabel && (
+                {sublabel && (
                   <div
                     style={{
                       fontSize: 13,
                       color: theme.textSecondary,
                     }}
                   >
-                    {node.sublabel}
+                    {sublabel}
                   </div>
                 )}
               </GlassyPanel>

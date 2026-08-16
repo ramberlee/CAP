@@ -63,7 +63,8 @@ export const FanOutScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({ s
       >
         {/* LEFT: vertical list of items */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {(content.leftItems ?? []).map((item, i) => {
+          {(content.leftItems ?? []).map((itemOrig, i) => {
+            const item = itemOrig as any;
             const itemStart = 12 + i * 4;
             const itemEase = Math.min(Math.max((frame - itemStart) / 14, 0), 1);
             return (
@@ -160,7 +161,7 @@ export const FanOutScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({ s
           >
             {content.rightCardTitle}
           </div>
-          {content.rightCardSubtitle && (
+          {(content as any).rightCardSubtitle && (
             <div
               style={{
                 fontSize: 14,
@@ -169,7 +170,7 @@ export const FanOutScene: React.FC<{ scene: Scene; theme: ThemePalette }> = ({ s
                 marginBottom: 16,
               }}
             >
-              {content.rightCardSubtitle}
+              {(content as any).rightCardSubtitle}
             </div>
           )}
           <div

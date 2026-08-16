@@ -41,6 +41,157 @@ PLATFORMS = ["xiaohongshu", "wechat", "douyin"]
 IMAGE_PLACEHOLDER_RE = re.compile(r"\[IMAGE:(.*?)]")
 VIDEO_PLACEHOLDER_RE = re.compile(r"\[VIDEO:(.*?)]")
 
+
+def _parse_robust_json(text: str) -> Optional[dict]:
+    """Robust JSON parser that handles common LLM output issues:
+    1. Markdown code fences (```json ... ```)
+    2. Unescaped quotes inside string values
+    3. Trailing text after the JSON object
+    4. Truncated JSON (LLM hit max_tokens mid-response)
+    """
+    text = text.strip()
+
+    # Strip markdown code fences
+    if text.startswith("```"):
+        first_nl = text.find("\n")
+        text = text[first_nl + 1:] if first_nl >= 0 else text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
+    json_start = text.find("{")
+    json_end = text.rfind("}") + 1
+    if json_start == -1 or json_end == 0:
+        # No closing brace — likely truncated JSON. Try to repair.
+        json_str = text[json_start:] if json_start >= 0 else text
+        repaired = _repair_truncated_json(json_str)
+        if repaired:
+            try:
+                return json.loads(repaired)
+            except json.JSONDecodeError:
+                pass
+        return None
+
+    json_str = text[json_start:json_end]
+
+    # Try parsing as-is first (fast path)
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        pass
+
+    # Repair: escape unescaped quotes inside string values
+    chars = list(json_str)
+    in_string = False
+    backslash = "\\"
+    i = 0
+    while i < len(chars):
+        # Skip already escaped quotes (\")
+        if i + 1 < len(chars) and chars[i] == backslash and chars[i+1] == '"':
+            i += 2
+            continue
+        if chars[i] == '"':
+            if not in_string:
+                in_string = True
+            else:
+                # Check if this looks like a structural end-quote
+                is_structural = False
+                # Look ahead for structural chars (ignore whitespace)
+                for j in range(i+1, min(len(chars), i+5)):
+                    if chars[j] in ' \t\n\r':
+                        continue
+                    if chars[j] in ':,]}':
+                        is_structural = True
+                        break
+                if not is_structural:
+                    # Interior quote - escape it
+                    chars.insert(i, backslash)
+                    i += 1
+                else:
+                    in_string = False
+        i += 1
+
+    repaired = ''.join(chars)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        # Still failed — try truncation repair as last resort
+        truncated = _repair_truncated_json(json_str)
+        if truncated:
+            try:
+                return json.loads(truncated)
+            except json.JSONDecodeError:
+                pass
+        return None
+
+
+def _repair_truncated_json(text: str) -> Optional[str]:
+    """Repair truncated JSON by closing unterminated strings and open structures.
+
+    Handles the common case where the LLM hits max_tokens mid-JSON response.
+    Returns repaired JSON string, or None if unrecoverable.
+    """
+    if not text or not text.strip():
+        return None
+
+    text = text.strip()
+
+    # Close unterminated string in the last line
+    lines = text.split('\n')
+    if lines:
+        last = lines[-1]
+        quote_count = 0
+        i = 0
+        while i < len(last):
+            if last[i] == '\\' and i + 1 < len(last):
+                i += 2
+                continue
+            if last[i] == '"':
+                quote_count += 1
+            i += 1
+        if quote_count % 2 != 0:
+            lines[-1] = last.rstrip() + '"'
+    text = '\n'.join(lines)
+
+    # Remove trailing incomplete key-value pairs (e.g. "key": or "key": "partial")
+    text = re.sub(r',\s*"[^"]*":?\s*$', '', text)
+    text = re.sub(r':\s*$', ': null', text)
+    text = re.sub(r',\s*$', '', text)
+
+    # Count open braces/brackets and close them
+    open_braces = 0
+    open_brackets = 0
+    in_string = False
+    escape_next = False
+    for ch in text:
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == '\\' and in_string:
+            escape_next = True
+            continue
+        if ch == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == '{':
+            open_braces += 1
+        elif ch == '}':
+            open_braces -= 1
+        elif ch == '[':
+            open_brackets += 1
+        elif ch == ']':
+            open_brackets -= 1
+
+    for _ in range(open_brackets):
+        text += ']'
+    for _ in range(open_braces):
+        text += '}'
+
+    return text
+
+
 CATEGORY_SYSTEM_PROMPTS = {
     "dao": (
         "你是一个AI领域的内容创作专家。"
@@ -440,10 +591,15 @@ class ContentGenerator:
         system_prompt = CATEGORY_SYSTEM_PROMPTS.get(category, CATEGORY_SYSTEM_PROMPTS["dao"])
         logger.info(f"Generating {platform}/{category} content for: {topic[:50]}...")
 
+        # Allow long-form platforms (e.g. wechat) to override the global token
+        # budget so their JSON output isn't truncated mid-string.
+        platform_cfg = getattr(self.config.platforms, platform, None)
+        max_tokens = getattr(platform_cfg, "max_tokens", None) or self.gen_config.max_tokens
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
-                max_tokens=self.gen_config.max_tokens,
+                max_tokens=max_tokens,
                 temperature=self.gen_config.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -453,13 +609,14 @@ class ContentGenerator:
 
             text = response.choices[0].message.content
 
-            json_start = text.find("{")
-            json_end = text.rfind("}") + 1
-            if json_start == -1 or json_end == 0:
-                logger.error(f"No JSON found in response for {platform}")
+            result = _parse_robust_json(text)
+            if result is None:
+                snippet = (text or "").strip()
+                logger.error(
+                    f"Failed to parse JSON for {platform}. "
+                    f"Response ({len(snippet)} chars): {snippet[:500]}"
+                )
                 return None
-
-            result = json.loads(text[json_start:json_end])
             logger.info(f"Generated {platform} content: {result.get('title', 'N/A')[:30]}")
 
             if not result.get("tags"):
@@ -496,22 +653,12 @@ class ContentGenerator:
             )
             text = response.choices[0].message.content
 
-            # Strip markdown code fences (```json ... ``` or ``` ... ```)
-            text = text.strip()
-            if text.startswith("```"):
-                first_nl = text.find("\n")
-                text = text[first_nl + 1:] if first_nl >= 0 else text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-            text = text.strip()
-
-            json_start = text.find("{")
-            json_end = text.rfind("}") + 1
-            if json_start == -1 or json_end == 0:
-                logger.error(f"No JSON found in LLM response. "
+            result = _parse_robust_json(text)
+            if result is None:
+                logger.error(f"No valid JSON found in LLM response. "
                              f"Response ({len(text)} chars): {text[:500]}")
                 return None
-            return json.loads(text[json_start:json_end])
+            return result
         except (json.JSONDecodeError, Exception) as e:
             logger.error(f"LLM JSON call failed: {e}")
             return None
